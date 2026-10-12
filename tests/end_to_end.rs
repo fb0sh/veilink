@@ -232,6 +232,44 @@ async fn a_wrong_key_is_rejected_and_the_request_fails_closed() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_correct_pin_is_accepted() {
+    // A pin that names the real server must work; a pin check that rejects everything would be
+    // indistinguishable from a pin check that is simply broken.
+    let origin = TestServer::start().await.unwrap();
+    let key = test_psk();
+    let server = RunningServer::start(&key, Transport::Tls).await;
+    let fingerprint = server
+        .context
+        .identity
+        .fingerprint_hex()
+        .chars()
+        .collect::<String>();
+
+    let listen = veilink_testkit::settings::free_listen_addr();
+    let yaml = format!(
+        "server: \"{}\"\nkey: \"{}\"\nlisten: \"{listen}\"\ntransport: tls\n\
+         server_name: \"veilink.local\"\nserver_identity_pin: \"{fingerprint}\"\n\
+         whitelist:\n  - \"CIDR,127.0.0.0/8\"\n",
+        server.addr,
+        key.to_base64url().as_str()
+    );
+    let settings = veilink_config::ClientConfig::from_yaml(&yaml)
+        .unwrap()
+        .validate()
+        .unwrap();
+    let client = veilink_testkit::veilink::RunningTunnelClient::start_with_settings(settings).await;
+    client.wait_ready(Duration::from_secs(15)).await;
+
+    let result = get_via_proxy_with_status(client.addr, &format!("{}/hello", origin.origin()));
+    assert_eq!(result.status(), 200, "stdout={:?}", result.stdout);
+    assert_eq!(result.stdout.lines().next(), Some("hello world"));
+
+    client.stop().await;
+    server.stop().await;
+    origin.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_pinned_identity_is_enforced() {
     // The client pins an identity that is not the server's, so the session must be refused.
     let origin = TestServer::start().await.unwrap();

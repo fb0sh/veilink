@@ -61,7 +61,7 @@
 | `message` | 位置化的消息编码与解码 |
 | `codec` | 会话编解码：填充策略、控制链、一次性密钥池 |
 | `session` | 多路复用、流状态机、流控、按批写出的读写任务 |
-| `scheduler` | `SendScheduler` / `BatchContext` 抽象与 `ImmediateScheduler` 默认实现 |
+| `scheduler` | `SendScheduler` / `BatchContext` 抽象与 `ImmediateScheduler` 默认实现；`SessionConfig` 通过 `scheduler` 与 `schedule_max_delay` 安装策略（另：`Direction` 由本 crate 重新导出，客户端与服务端因此不必直接依赖 `veilink-crypto` 就能命名方向） |
 | `duplex` | 带缓冲的双向流、头部读取、字节记账转发、全双工 splice |
 | `stats` | 客户端与服务端共用的原子计数器 |
 

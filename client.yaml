@@ -1,0 +1,9 @@
+server: "127.0.0.1:18443"
+key: ""
+listen: "127.0.0.1:18080"
+transport: tls
+server_name: "veilink.local"
+server_identity_pin: ""
+state_dir: "/tmp/vlsmoke/state"
+whitelist:
+  - "CIDR,127.0.0.0/8"

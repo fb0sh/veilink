@@ -254,7 +254,7 @@ exporter 不同（`connector.rs` 的测试 `each_session_has_a_different_exporte
 - 其公钥被写入 `SERVER_HELLO`，并被 transcript / PSK 绑定的 MAC 覆盖，因此客户端知道"这是同一个
   服务端实例"；
 - 其公钥被嵌入自签名 TLS 证书，供操作者把证书与日志中的指纹对应起来；
-- 客户端可 pin 该指纹以检测服务端被替换（能力已实现，客户端配置尚未接入，见第 7 节）。
+- 客户端可用 `server_identity_pin` pin 该指纹以检测服务端被替换（**已接入配置**，见第 3 节与第 7 节）。
 
 **能做什么**：攻击者可以伪造一个"身份相同"的 TLS 证书；如果它同时拥有 PSK，就能完整冒充服务端；
 如果只有身份私钥而没有 PSK，它仍会在 VLP/1 握手阶段失败。

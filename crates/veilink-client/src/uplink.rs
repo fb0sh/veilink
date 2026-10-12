@@ -224,9 +224,17 @@ impl std::fmt::Display for UplinkError {
             UplinkError::Handshake(m) => write!(f, "protocol handshake failed: {m}"),
             UplinkError::IdentityMismatch { observed } => write!(
                 f,
-                "the server presented identity {:02x}{:02x}{:02x}{:02x}, which does not match the \
+                "the server presented the identity fingerprint {} ({}), which does not match the \
                  pinned value",
-                observed[0], observed[1], observed[2], observed[3]
+                observed
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>(),
+                observed[..4]
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<Vec<_>>()
+                    .join(":")
             ),
             UplinkError::Closed(m) => write!(f, "the session ended: {m}"),
         }
@@ -363,14 +371,20 @@ where
     Ok((session, identity))
 }
 
-fn check_identity(config: &UplinkConfig, observed: &[u8; 32]) -> Result<(), UplinkError> {
+/// Checks the server's advertised identity against the pin.
+///
+/// The pin is a fingerprint (`SHA-256` of the public key), not the public key itself, so the
+/// advertised key is hashed first. Comparing the pin against the raw key would reject every server,
+/// including the correct one, which is exactly what an earlier version of this function did.
+fn check_identity(config: &UplinkConfig, public_key: &[u8; 32]) -> Result<(), UplinkError> {
     match &config.expected_identity {
         Some(pin) => {
-            if veilink_crypto::fingerprint_matches_pin(pin, observed) {
+            let fingerprint = veilink_crypto::fingerprint_of(public_key);
+            if veilink_crypto::fingerprint_matches_pin(pin, &fingerprint) {
                 Ok(())
             } else {
                 Err(UplinkError::IdentityMismatch {
-                    observed: *observed,
+                    observed: fingerprint,
                 })
             }
         }

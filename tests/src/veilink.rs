@@ -6,7 +6,6 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::oneshot;
 
-use veilink_client::runtime::ClientRuntime;
 use veilink_client::uplink::{default_padding, run_uplink, UplinkConfig};
 use veilink_client::ClientContext;
 use veilink_config::{ClientConfig, ServerConfig, Transport};
@@ -169,9 +168,11 @@ impl RunningTunnelClient {
     }
 
     /// Starts a client from settings that were built by hand.
-    pub async fn start_with_settings(settings: veilink_config::ClientSettings) -> Self {
-        let runtime = ClientRuntime::bind(&settings).await.expect("client binds");
-        let addr = runtime.local_addr().expect("client addr");
+    pub async fn start_with_settings(mut settings: veilink_config::ClientSettings) -> Self {
+        // The probe port may have been taken by another test in this binary; retry on a fresh one.
+        let runtime = super::settings::bind_client_with_retry(&settings).await;
+        settings.listen = runtime.local_addr().expect("client addr");
+        let addr = settings.listen;
         let context = runtime.context();
         let (tx, rx) = oneshot::channel();
         let handle = tokio::spawn(async move {

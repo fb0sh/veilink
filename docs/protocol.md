@@ -518,11 +518,12 @@ receiver                                   sender
 
 以下内容**未实现**或**实现但不生效**，文档中不得当作已实现的能力：
 
-- **发送节奏整形当前不生效**。`SendScheduler` 抽象（`protocol/scheduler.rs`）与
-  `PrivacyScheduler`（`veilink-privacy`）都已实现并被两端安装；**批量合并**
-  （`max_batch` / `max_batch_bytes`）确实生效，但 `delay()` 不会被应用：`writer_task` 只在
-  `!delay.is_zero() && queued_behind == 0` 时睡眠，而 `PrivacyScheduler` 只在
-  `queued_behind > 0` 时返回非零延迟，两者互斥。结果是帧之间没有加入人为间隔。
+- **发送节奏整形已生效，但没有对抗性评估**。`SendScheduler`
+  （`protocol/scheduler.rs`）与 `PrivacyScheduler`（`veilink-privacy`）两端都会安装；
+  **批量合并**（`max_batch` / `max_batch_bytes`）与**节奏整形**都实际起作用：`delay()` 只在
+  `queued_behind > 0` 时返回非零值，`writer_task` 拿到非零值即睡眠，并受
+  `schedule_max_delay`（50 ms）硬上限约束，`oldest_wait` 超限时立即发送。仍然**未做**的是：
+  恒定速率发送，以及任何形式的检测率 / 抗指纹评估。
 - **没有应用层 keepalive 循环**。`Session::ping()` 与 `PING`/`PONG` 已实现，但生产路径不周期性
   调用；空闲会话由 `idle_timeout`（默认 300 秒，运行时下限 60 秒）关闭。
 - **cover traffic 的调度是"空闲突发后停止"，不是恒定速率**。`CoverEngine` 默认在会话空闲

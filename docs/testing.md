@@ -44,15 +44,20 @@ cargo bench -p veilink-benches -- --test      # 每个基准只跑一次，用�
 > 在受限环境（例如沙箱阻止写入 `~/.cargo`）中，先设置工作区内的 `CARGO_HOME`：
 > `export CARGO_HOME=$PWD/.cargo-home`。本仓库的 `.gitignore` 已忽略 `/.cargo-home`。
 
-当前工作树中的测试数量（编写本文档时统计）：
+当前工作树中的测试数量（`cargo test --workspace --no-fail-fast` 的结果，32 个测试目标）：
 
 | 层次 | 数量 |
 |------|------|
-| 单元测试（`crates/**/src/*.rs`，按 `cargo test` 各目标 `passed` 之和） | 279 |
+| 单元测试（`crates/**` 各 lib/bin 目标，含 `veilink-transport` 18、`veilink-protocol` 78、`veilink-crypto` 76） | 299 |
 | CLI 集成测试（`crates/veilink-cli/tests/cli.rs`） | 10 |
 | 端到端集成测试（`tests/*.rs`） | 67 |
 | doc-test | 2 |
-| **合计** | **356 + 2 doc-test** |
+| **合计** | **378 通过 / 0 失败 / 0 ignored** |
+
+各目标分布：`veilink` 2、`veilink-client` 32、`veilink-config` 21、`veilink-crypto` 76、
+`veilink-privacy` 20、`veilink-protocol` 78、`veilink-rules` 34、`veilink-server` 16、
+`veilink-testkit` 2、`veilink-transport` 18、`cli.rs` 10；集成测试 67（见 3.1 表）；
+doc-test 2（`veilink-config` 与 `veilink-rules` 各 1）。
 
 （测试数量随代码变化；以 `cargo test --workspace` 的输出为准。）
 
@@ -259,7 +264,9 @@ cargo bench -p veilink-benches -- --test       # 只跑一次，冒烟
   （`.gitignore` 中预留了 `/fuzz/`，但目录不存在）。
 - **没有覆盖率统计配置**（无 `tarpaulin`/`llvm-cov` 配置或阈值）。
 - **时间相关测试**：少量测试使用真实 `sleep`（空闲/退避/cancelled download），在极慢或极繁忙的
-  CI 机器上可能变慢或有轻微抖动；超时值已按此设置为数秒级。
+  CI 机器上可能变慢或有轻微抖动；超时值已按此设置为数秒级。测试 harness 已经处理了两类已知的
+  竞态：`tests/src/settings.rs::bind_client_with_retry` 在探测端口被占用时换一个端口重试，
+  `tests/end_to_end.rs` 在断言语义前轮询等待周期性统计 reporter（1 秒节拍）折入会话计数器。
 - **测试用的 PSK 是固定值**（`tests/src/settings.rs` 的 `TEST_KEY`），它只保护测试流量，不保护
   任何真实数据。
 - 服务端测试若需要访问 `127.0.0.1` 目标，必须打开 `allow_private_targets: true`——这是**测试专用**

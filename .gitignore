@@ -3,8 +3,10 @@
 **/*.rs.bk
 *.pdb
 
-# Local cargo home used in sandboxed development environments
-/.cargo-home
+# Local cargo home used in sandboxed development environments.
+# `**/` matters: a cargo invocation from a subdirectory with a relative CARGO_HOME
+# creates its own copy, and an earlier version of this file let one into the repository.
+**/.cargo-home/
 
 # Runtime state: long-term identity keys, generated certificates
 /state

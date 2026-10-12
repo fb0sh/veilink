@@ -667,8 +667,8 @@ and 2 attempts, and does not cache negative answers. See [docs/privacy.md](docs/
 - **Identifiability**: the frame header (`0x56`), ALPN, `veilink.invalid` and the self-signed
   certificate are strong features. **No claim of a zero detection rate.**
 - **Traffic correlation and website fingerprinting**: padding only coarsens length; cover traffic only
-  covers idle periods (and stops after about 60 seconds); scheduler **pacing is not currently
-  effective**. There is **no** detection-rate evaluation in this repository. **No claim of being
+  covers idle periods (and stops after about 60 seconds); scheduler pacing is bounded and
+  unmeasured. There is **no** detection-rate evaluation in this repository. **No claim of being
   un-fingerprintable.**
 - **Anonymity**: the server knows your IP; network observers know you talk to it. **No claim of
   absolute anonymity or untraceability.**
@@ -702,9 +702,10 @@ Full analysis: [docs/cryptography.md](docs/cryptography.md), [docs/privacy.md](d
   change together).
 - **Server identity is not pinned by default**: without `server_identity_pin` only the PSK is trusted, so
   another server sharing the same PSK is not detected (setting the pin is recommended).
-- **Send pacing is not currently effective**: batching works, but the scheduler's `delay()` is never
-  applied by the writer (the sleep condition and the policy's return value are mutually exclusive; see
-  section 3.2 of [docs/privacy.md](docs/privacy.md)).
+- **Send pacing works but its effect is unmeasured**: batching and jittered pacing both take effect
+  (a frame waits only when more messages are queued behind the current batch, and for at most 50 ms;
+  see section 3.2 of [docs/privacy.md](docs/privacy.md)). No detection-rate measurement exists, so
+  this is not evidence of fingerprinting resistance.
 - **Cover traffic only covers idle periods** and stops after at most about 40 bursts; it is not a
   constant-rate generator.
 - **No periodic keepalive**: idle sessions are closed by `idle_timeout`.

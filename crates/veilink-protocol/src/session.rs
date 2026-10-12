@@ -975,7 +975,10 @@ async fn writer_task<W>(
         let delay = scheduler
             .delay(&context)
             .min(inner.config.schedule_max_delay);
-        if !delay.is_zero() && queued_behind == 0 {
+        // The scheduler decides whether to pace at all: it returns zero when there is nothing
+        // queued behind this batch, because waiting on an idle queue would add latency without
+        // hiding anything. The writer only enforces its own hard cap.
+        if !delay.is_zero() {
             tokio::time::sleep(delay).await;
             oldest_wait += delay;
         }
@@ -1654,6 +1657,115 @@ mod tests {
         let server = server.expect("server session");
         let incoming = server.incoming_streams().expect("incoming stream receiver");
         (client, server, incoming)
+    }
+
+    /// A scheduler that records the contexts it was asked about and always asks for a fixed wait.
+    ///
+    /// It exists so that a test can prove the writer actually applies the delay it is given. The
+    /// earlier version of the writer consulted the scheduler but had a condition that could never be
+    /// true, so pacing silently did nothing; a test that only checked "a scheduler is installed"
+    /// would not have caught that.
+    #[derive(Debug)]
+    struct RecordingScheduler {
+        delay: Duration,
+        contexts: std::sync::Mutex<Vec<crate::scheduler::BatchContext>>,
+    }
+
+    impl RecordingScheduler {
+        fn new(delay: Duration) -> Arc<Self> {
+            Arc::new(RecordingScheduler {
+                delay,
+                contexts: std::sync::Mutex::new(Vec::new()),
+            })
+        }
+
+        fn paced_contexts(&self) -> usize {
+            self.contexts
+                .lock()
+                .map(|c| c.iter().filter(|c| c.queued_behind > 0).count())
+                .unwrap_or(0)
+        }
+
+        fn calls(&self) -> usize {
+            self.contexts.lock().map(|c| c.len()).unwrap_or(0)
+        }
+    }
+
+    impl crate::scheduler::SendScheduler for RecordingScheduler {
+        fn max_batch(&self) -> usize {
+            1
+        }
+
+        fn max_batch_bytes(&self) -> usize {
+            4096
+        }
+
+        fn delay(&self, context: &crate::scheduler::BatchContext) -> Duration {
+            if let Ok(mut contexts) = self.contexts.lock() {
+                contexts.push(*context);
+            }
+            // Only ask for a wait when another message is already queued, mirroring the real
+            // policy's work-conserving contract.
+            if context.queued_behind > 0 {
+                self.delay
+            } else {
+                Duration::ZERO
+            }
+        }
+
+        fn name(&self) -> &'static str {
+            "recording"
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_writer_applies_the_scheduler_delay() {
+        let scheduler = RecordingScheduler::new(Duration::from_millis(5));
+        let config = SessionConfig {
+            scheduler: scheduler.clone(),
+            schedule_max_delay: Duration::from_millis(50),
+            ..SessionConfig::default()
+        };
+        let (client, server, mut incoming) = session_pair(config).await;
+        let (mut client_stream, mut server_stream) =
+            connected_streams(&client, &server, &mut incoming).await;
+
+        // Queue a burst as fast as possible, so the writer sees messages waiting behind each batch.
+        let frames = 12;
+        let payload = vec![7u8; 512];
+        let started = std::time::Instant::now();
+        for _ in 0..frames {
+            client_stream.write_all(&payload).await.expect("write");
+        }
+        client_stream.flush().await.expect("flush");
+
+        let mut received = vec![0u8; payload.len() * frames];
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            tokio::io::AsyncReadExt::read_exact(&mut server_stream, &mut received),
+        )
+        .await
+        .expect("the payload must arrive")
+        .expect("read");
+        let elapsed = started.elapsed();
+        assert_eq!(received, vec![7u8; payload.len() * frames]);
+
+        assert!(
+            scheduler.calls() > 0,
+            "the writer never consulted the scheduler"
+        );
+        assert!(
+            scheduler.paced_contexts() > 0,
+            "the writer only ever saw an empty queue, so the pacing path was never exercised"
+        );
+        // Every paced write costs at least the configured delay, so the burst cannot complete
+        // faster than a handful of delays. The bound is deliberately loose: this asserts that the
+        // delay is applied at all, not that it is applied with millisecond precision.
+        let paced = scheduler.paced_contexts() as u32;
+        assert!(
+            elapsed >= Duration::from_millis(5) * paced.min(4),
+            "the burst finished in {elapsed:?} despite {paced} paced writes, so the delay was not applied"
+        );
     }
 
     /// Opens a stream, answers it on the server side, and returns both ends.
