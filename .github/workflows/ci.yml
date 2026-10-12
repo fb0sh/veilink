@@ -96,6 +96,54 @@ jobs:
         run: ./target/release/veilink --version
 
   # ---------------------------------------------------------------------------
+  # Fuzzing (bounded: this is a smoke run, not a full campaign)
+  #
+  # `cargo fuzz` drives cargo, and cargo resolves its toolchain from the working
+  # directory, which is the repository root and therefore stable. The nightly
+  # toolchain is selected explicitly instead of relying on `fuzz/rust-toolchain.toml`,
+  # which cargo would only consult if it were invoked from inside `fuzz/`.
+  # ---------------------------------------------------------------------------
+  fuzz:
+    name: fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - frame_read
+          - frame_header
+          - message_decode
+          - rule_parse
+          - config_yaml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: fuzz
+          workspaces: fuzz
+
+      - run: cargo install cargo-fuzz --locked
+
+      - name: Build the fuzz targets
+        run: RUSTUP_TOOLCHAIN=nightly cargo fuzz build ${{ matrix.target }}
+
+      - name: Fuzz ${{ matrix.target }} for 60 seconds
+        run: |
+          RUSTUP_TOOLCHAIN=nightly cargo fuzz run ${{ matrix.target }} -- \
+            -max_total_time=60 -rss_limit_mb=2048 -print_final_stats=1
+
+      # A crash leaves an artifact that reproduces the input; upload it so the
+      # failure can be investigated rather than merely observed.
+      - name: Upload a crash artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
   # Cross-compilation matrix
   # ---------------------------------------------------------------------------
   cross:

@@ -10,7 +10,15 @@ below.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- Five `cargo-fuzz` targets covering every synchronous parser that consumes untrusted bytes: the
+  frame reader, the authenticated frame header, the message decoder, the whitelist rule parser and
+  both YAML configuration parsers. Each asserts structural invariants (bounded lengths, canonical
+  encodings, deterministic validation, no panic) rather than specific error variants. A `fuzz` job
+  in CI runs every target for 60 seconds and uploads a crash artifact on failure.
+- A `bind_client_with_retry` helper and deadline polling in the integration harness, so a port probe
+  race or a background statistics reporter can no longer fail an unrelated test.
 
 ## [0.1.0] - 2026-10-12
 

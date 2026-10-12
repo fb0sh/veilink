@@ -1,0 +1,57 @@
+[package]
+name = "veilink-fuzz"
+description = "Coverage-guided fuzz targets for the Veilink parsers"
+version = "0.0.0"
+publish = false
+edition = "2021"
+rust-version = "1.75"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+veilink-config = { path = "../crates/veilink-config" }
+veilink-protocol = { path = "../crates/veilink-protocol" }
+veilink-rules = { path = "../crates/veilink-rules" }
+veilink-crypto = { path = "../crates/veilink-crypto" }
+
+tokio = { version = "1", features = ["rt", "io-util", "macros"] }
+
+[[bin]]
+name = "frame_read"
+path = "fuzz_targets/frame_read.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "frame_header"
+path = "fuzz_targets/frame_header.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "message_decode"
+path = "fuzz_targets/message_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rule_parse"
+path = "fuzz_targets/rule_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "config_yaml"
+path = "fuzz_targets/config_yaml.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

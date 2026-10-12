@@ -21,7 +21,9 @@ veilink.key
 *.swp
 .DS_Store
 
-# Fuzzing
+# Fuzzing. The targets, their manifest and the pinned nightly toolchain are
+# committed; the build output, the generated corpus and any crash artifact are not.
 /fuzz/target
 /fuzz/corpus
 /fuzz/artifacts
+/fuzz/Cargo.lock

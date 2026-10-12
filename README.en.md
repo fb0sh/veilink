@@ -714,6 +714,11 @@ Full analysis: [docs/cryptography.md](docs/cryptography.md), [docs/privacy.md](d
 - **No anti-fingerprinting/anti-classification evaluation**, and no real-network detection-rate data.
 - Integration tests depend on `curl`; the repository currently has **no** automated real-network (for
   example GitHub) test (see [docs/testing.md](docs/testing.md)).
+- **Fuzzing is a bounded smoke run, not a continuous campaign**: `fuzz/` holds five `cargo-fuzz`
+  targets (frame reader, frame header, message decoder, rule parser, YAML validation). CI runs each
+  for 60 seconds and uploads a crash artifact on failure; it does not run for long and keeps no
+  long-lived corpus. The completed run covered about 15.4 million executions with no crash — that is
+  a sample, not a proof. See section 7 of [docs/testing.md](docs/testing.md).
 
 ---
 

@@ -642,6 +642,10 @@ A：默认 `max_connections: 1024`、`max_streams_per_session: 512`、单帧最�
 - **没有抗流量分类/指纹评估**，也没有真实网络下的检测率数据。
 - 集成测试依赖 `curl`；当前仓库**没有**自动化的真实网络（如 GitHub）测试（见
   [docs/testing.md](docs/testing.md)）。
+- **模糊测试是短时冒烟运行，不是持续 campaign**：`fuzz/` 下有 5 个 `cargo-fuzz` 目标（帧读取、
+  帧头、消息解码、规则解析、YAML 校验），CI 每个跑 60 秒并在失败时上传崩溃产物；CI 不长期运行，
+  也不保存长期语料库。已完成的实测约 1536 万次执行、零崩溃，见
+  [docs/testing.md](docs/testing.md) 第 7 节——那是一次抽样，不是证明。
 
 ---
 

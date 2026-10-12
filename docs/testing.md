@@ -255,13 +255,74 @@ cargo bench -p veilink-benches -- --test       # 只跑一次，冒烟
 
 ---
 
-## 7. 已知限制
+## 7. 模糊测试
+
+仓库包含 5 个 [`cargo-fuzz`](https://github.com/rust-fuzz/cargo-fuzz) 目标，覆盖所有解析**不可信
+字节**的同步入口。它们只断言"不 panic、不越界、不按未校验长度分配、编码规范形式稳定"这类不变量，
+不断言具体的错误类型。
+
+| 目标 | 覆盖的入口 | 不变量 |
+|---|---|---|
+| `fuzz/fuzz_targets/frame_read.rs` | `frame::read_frame`（认证前后两种模式） | 不 panic；握手帧不超过 `MAX_HANDSHAKE_MESSAGE`；解析出的 body 长度与帧头一致；帧头重编码后可再解码 |
+| `fuzz/fuzz_targets/frame_header.rs` | `FrameHeader::decode` | `ciphertext_len` 不超过 `MAX_CIPHERTEXT`；重编码字节完全一致；任意截断必须被拒绝；任意单比特翻转必须被观察到 |
+| `fuzz/fuzz_targets/message_decode.rs` | `Message::decode` | 编码规范唯一；重编码后可再解码且相等；任意截断必须被拒绝；尾随字节必须被拒绝 |
+| `fuzz/fuzz_targets/rule_parse.rs` | `Rule::parse`、`RuleSet::parse` | 规范形式可回解且稳定；解析幂等；匹配是纯函数；域规则绝不匹配 IP 字面量 |
+| `fuzz/fuzz_targets/config_yaml.rs` | `ClientConfig`/`ServerConfig` 的 YAML 解析与校验 | 不 panic；校验结果与诊断文本确定；通过校验的密钥必然满足 `MIN_PSK_LEN` |
+
+### 7.1 如何运行
+
+```bash
+rustup toolchain install nightly --profile minimal
+cargo install cargo-fuzz --locked
+
+export CARGO_HOME=$PWD/.cargo-home
+RUSTUP_TOOLCHAIN=nightly cargo fuzz build
+RUSTUP_TOOLCHAIN=nightly cargo fuzz run message_decode        # 无限运行，Ctrl+C 停止
+RUSTUP_TOOLCHAIN=nightly cargo fuzz run frame_read -- -max_total_time=60
+```
+
+CI 对每个目标跑 60 秒（`ci.yml` 的 `fuzz` job），失败时上传 `fuzz/artifacts/` 以便复现。
+
+### 7.2 本轮实测结果
+
+在本机（nightly 1.101，ASan 开启）跑出的实际数据，**零崩溃、零超时、零 OOM**：
+
+| 目标 | 执行次数 | 覆盖率（边） | 峰值 RSS |
+|---|---|---|---|
+| `frame_read` | 2,830,974 | 532 | 496 MB |
+| `frame_header` | 884,987 | 77 | 208 MB |
+| `message_decode` | 9,423,299 | 503 | 705 MB |
+| `rule_parse` | 1,550,699 | 1,710 | 537 MB |
+| `config_yaml` | 670,415 | 2,877 | 222 MB |
+| **合计** | **约 1,536 万次** | — | — |
+
+峰值 RSS 由 ASan 与语料库主导，未观察到随输入长度增长的内存占用，这与 `MAX_CIPHERTEXT` /
+`MAX_HANDSHAKE_MESSAGE` 的显式上限一致。
+
+### 7.3 这不能证明什么
+
+- **不是证明，是抽样**：没有崩溃只说明这些目标在这些时间内没有发现问题。
+- **未覆盖需要密钥与状态的路径**：`SessionCodec::open_application`、密钥池、流控窗口等需要完整
+  握手状态，模糊测试没有覆盖；它们由 `tests/replay.rs`、`tests/forward_secrecy.rs` 和
+  `veilink-protocol` 的单元测试以显式用例覆盖。
+- **未覆盖并发与网络层**：竞态、半开连接、TLS 层行为不在模糊测试范围内。
+
+---
+
+## 8. 已知限制
 
 - **集成测试依赖 `curl`**：没有 `curl` 时 `tests/` 会失败（单元测试仍可运行）。
 - **测试全部在回环上自建**：不访问互联网；因此它们不验证真实网络下的 MTU、丢包、NAT 或中间盒行为。
 - **没有真实网络自动化测试**（见第 5 节），也没有性能回归门限（基准只测量，不做阈值比较）。
-- **没有属性测试/fuzzing 目标**：边界由显式用例覆盖，但仓库中没有 `cargo-fuzz` 目标或模糊测试
-  （`.gitignore` 中预留了 `/fuzz/`，但目录不存在）。
+- **模糊测试是短时冒烟运行，不是持续campaign**：`fuzz/` 下有 5 个 `cargo-fuzz`
+  目标并已接入 CI（每个目标 60 秒），但 CI 不会长时间运行，也不保存长期语料库。未被跑到的执行
+  路径仍然可能存在；已完成的一次性运行数据见第 7 节。
+- **`fuzz/` 使用 pinned nightly**：`cargo fuzz` 会驱动 `cargo`，而 cargo 从工作目录（仓库根）
+  解析工具链，因此必须显式 `RUSTUP_TOOLCHAIN=nightly`；`fuzz/rust-toolchain.toml` 只有在
+  从 `fuzz/` 目录内调用时才生效。
+- **nightly 上有一条与稳定版无关的弃用告警**：`veilink-protocol/src/stats.rs` 使用
+  `Atomic::fetch_update`，nightly 1.101 将其改名为 `try_update`。稳定版 1.97 上不存在新名字，
+  因此代码保持不变；构建 fuzz 目标时会出现该告警，属预期。
 - **没有覆盖率统计配置**（无 `tarpaulin`/`llvm-cov` 配置或阈值）。
 - **时间相关测试**：少量测试使用真实 `sleep`（空闲/退避/cancelled download），在极慢或极繁忙的
   CI 机器上可能变慢或有轻微抖动；超时值已按此设置为数秒级。测试 harness 已经处理了两类已知的
