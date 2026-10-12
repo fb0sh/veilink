@@ -14,5 +14,14 @@
 #![warn(missing_docs)]
 
 pub mod duplex;
+pub mod frame;
+pub mod message;
 
 pub use duplex::{copy_one_way, splice, BoxStream, BufStream, Duplex, SpliceOutcome};
+pub use frame::{
+    FrameError, FrameHeader, RawFrame, AUTHENTICATED_HEADER_LEN, FRAME_VERSION, MAX_CIPHERTEXT,
+    MAX_HANDSHAKE_MESSAGE, MAX_PADDING, MAX_PAYLOAD,
+};
+pub use message::{
+    Message, MessageError, MessageType, OpenStatus, StreamKind, MAX_HOST_LEN, MAX_TEXT_LEN,
+};

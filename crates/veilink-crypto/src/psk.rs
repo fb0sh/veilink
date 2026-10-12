@@ -266,6 +266,16 @@ impl DerivedKey {
     pub fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }
+
+    /// Wraps 32 bytes produced by a derivation performed elsewhere.
+    pub fn from_array(bytes: [u8; 32]) -> Self {
+        DerivedKey(Zeroizing::new(bytes))
+    }
+
+    /// Explicitly copies the key material.
+    pub fn duplicate(&self) -> Self {
+        DerivedKey(Zeroizing::new(*self.0))
+    }
 }
 
 impl fmt::Debug for DerivedKey {
