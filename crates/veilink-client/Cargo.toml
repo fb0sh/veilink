@@ -13,6 +13,7 @@ veilink-config = { workspace = true }
 veilink-rules = { workspace = true }
 veilink-crypto = { workspace = true }
 veilink-protocol = { workspace = true }
+veilink-transport = { workspace = true }
 
 tokio = { workspace = true, features = ["rt", "net", "io-util", "time", "sync", "macros"] }
 tokio-util = { workspace = true, features = ["io"] }

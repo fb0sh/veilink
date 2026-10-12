@@ -18,6 +18,7 @@ pub mod duplex;
 pub mod frame;
 pub mod message;
 pub mod session;
+pub mod stats;
 
 pub use codec::{BucketedPadding, CodecError, PaddingPolicy, SessionCodec, DATA_EPOCH};
 pub use duplex::{copy_one_way, splice, BoxStream, BufStream, Duplex, SpliceOutcome};
@@ -32,3 +33,7 @@ pub use session::{
     start_session, IncomingStream, Role, Session, SessionConfig, SessionError, SessionStats,
     SessionStatsSnapshot, VlpStream, DEFAULT_WINDOW, MAX_STREAM_DATA, MIN_WINDOW,
 };
+pub use stats::{Stats, StatsSnapshot};
+// Re-exported so that the client and the server do not each need a direct dependency on the
+// cryptographic crate just to name a direction.
+pub use veilink_crypto::Direction;

@@ -13,9 +13,11 @@ veilink-config = { workspace = true }
 veilink-rules = { workspace = true }
 veilink-crypto = { workspace = true }
 veilink-protocol = { workspace = true }
+veilink-transport = { workspace = true }
 
 tokio = { workspace = true, features = ["rt", "net", "io-util", "time", "sync", "macros"] }
 tokio-util = { workspace = true, features = ["io"] }
+tokio-rustls = { workspace = true, features = ["ring", "tls12", "logging"] }
 hickory-resolver = { workspace = true, features = ["tokio-runtime", "system-config"] }
 ipnet = { workspace = true }
 tracing = { workspace = true }

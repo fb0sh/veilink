@@ -1,0 +1,38 @@
+[package]
+name = "veilink-benches"
+description = "Criterion benchmarks for the Veilink cryptographic core and VLP/1 frame path"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+# The benchmarks are declared explicitly so that `cargo bench --no-run` compiles exactly three
+# targets and a new file does not silently become a benchmark.
+autobenches = false
+
+[dependencies]
+veilink-crypto = { workspace = true }
+veilink-protocol = { workspace = true }
+
+[dev-dependencies]
+# `cargo_bench_support` is required for `criterion_main!` to run under `cargo bench`; the workspace
+# dependency disables default features, so it is enabled here.
+criterion = { workspace = true, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "crypto"
+path = "benches/crypto.rs"
+harness = false
+
+[[bench]]
+name = "throughput"
+path = "benches/throughput.rs"
+harness = false
+
+[[bench]]
+name = "privacy"
+path = "benches/privacy.rs"
+harness = false

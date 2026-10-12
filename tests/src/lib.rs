@@ -12,7 +12,11 @@
 #![forbid(unsafe_code)]
 
 pub mod curl;
+pub mod dns;
 pub mod server;
 pub mod settings;
+pub mod veilink;
 
+pub use dns::DnsStub;
 pub use server::{TestServer, TestTlsServer};
+pub use veilink::{RunningServer, RunningTunnelClient};

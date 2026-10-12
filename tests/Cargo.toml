@@ -54,3 +54,21 @@ path = "whitelist.rs"
 [[test]]
 name = "concurrency"
 path = "concurrency.rs"
+[[test]]
+name = "end_to_end"
+path = "end_to_end.rs"
+[[test]]
+name = "dns_leak"
+path = "dns_leak.rs"
+[[test]]
+name = "crypto_roundtrip"
+path = "crypto_roundtrip.rs"
+[[test]]
+name = "forward_secrecy"
+path = "forward_secrecy.rs"
+[[test]]
+name = "replay"
+path = "replay.rs"
+[[test]]
+name = "recovery"
+path = "recovery.rs"

@@ -336,10 +336,14 @@ struct SessionInner {
     ping_waiters: Mutex<HashMap<u64, oneshot::Sender<()>>>,
     /// Woken whenever the peer publishes one-time keys.
     keys_available: Notify,
+    /// Woken when the session closes, so supervisors do not have to poll.
+    closed_notify: Notify,
     /// Woken whenever the outbound queue has room again.
     capacity: Mutex<Vec<Waker>>,
     closed: AtomicBool,
     close_reason: Mutex<Option<String>>,
+    /// The server's authenticated long-term identity, for the client's pin check.
+    server_identity: Option<[u8; 32]>,
     stats: SessionStats,
     config: SessionConfig,
 }
@@ -363,6 +367,7 @@ impl SessionInner {
                 }
             }
             self.keys_available.notify_waiters();
+            self.closed_notify.notify_waiters();
             self.fail_all_streams("session closed");
         }
     }
@@ -476,6 +481,14 @@ impl Session {
             .lock()
             .map(|c| c.session_id())
             .unwrap_or_default()
+    }
+
+    /// The server's authenticated long-term identity, as advertised in its handshake message.
+    ///
+    /// The value is authenticated because the whole `SERVER_HELLO` is covered by the transcript
+    /// that the confirmation MAC protects. A client can pin it to detect a swapped server.
+    pub fn server_identity(&self) -> Option<[u8; 32]> {
+        self.inner.server_identity
     }
 
     /// True when the session has been closed.
@@ -635,6 +648,20 @@ impl Session {
         Ok(())
     }
 
+    /// Resolves once the session has closed, for any reason.
+    ///
+    /// Supervisors use this instead of polling so that a reconnect happens promptly.
+    pub async fn wait_closed(&self) {
+        // Register before checking so a closure between the check and the wait cannot be missed.
+        let notified = self.inner.closed_notify.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+        if self.inner.is_closed() {
+            return;
+        }
+        notified.await;
+    }
+
     /// Sends a keepalive and waits for the reply.
     pub async fn ping(&self) -> Result<Duration, SessionError> {
         if self.inner.is_closed() {
@@ -657,6 +684,26 @@ impl Session {
                 Err(SessionError::Timeout)
             }
         }
+    }
+
+    /// Aborts a stream from outside its own handle.
+    ///
+    /// The server runtime uses this when a splice fails after `OPEN_RESULT` has already been sent,
+    /// so that the client sees a reset instead of a silent end of stream.
+    pub fn reset_stream(&self, stream_id: u32, code: u32, reason: &str) {
+        let _ = self.inner.enqueue(Message::StreamReset {
+            stream_id,
+            code,
+            reason: reason.to_string(),
+        });
+        if let Some(shared) = self.inner.stream(stream_id) {
+            if let Ok(mut recv) = shared.recv.lock() {
+                recv.reset = Some((code, reason.to_string()));
+            }
+            shared.wake_reader();
+            shared.wake_writer();
+        }
+        self.inner.remove_stream(stream_id);
     }
 
     /// Closes the session gracefully: sends `GOAWAY` and stops both tasks.
@@ -714,8 +761,8 @@ where
     .await
     .map_err(|_| SessionError::Timeout)??;
 
-    let (keys, duplex) = handshake;
-    build_session(duplex, role, keys, config, padding).await
+    let (keys, duplex, server_identity) = handshake;
+    build_session(duplex, role, keys, server_identity, config, padding).await
 }
 
 /// Runs the handshake over a duplex stream and returns the session keys with the stream.
@@ -725,7 +772,7 @@ async fn run_handshake<D>(
     psk: &Psk,
     exporter: [u8; 32],
     identity: [u8; 32],
-) -> Result<(HandshakeKeys, D), SessionError>
+) -> Result<(HandshakeKeys, D, Option<[u8; 32]>), SessionError>
 where
     D: Duplex,
 {
@@ -760,8 +807,9 @@ where
                     ))
                 }
             };
+            let server_identity = handshake.server_identity();
             let keys = handshake.verify_server_confirm(&server_confirm)?;
-            Ok((keys, duplex))
+            Ok((keys, duplex, server_identity))
         }
         Role::Server => {
             let mut handshake = ServerHandshake::new(psk, config_pool_hint(), identity);
@@ -793,7 +841,8 @@ where
                 .keys()
                 .ok_or_else(|| SessionError::Protocol("handshake produced no keys".to_string()))?
                 .clone();
-            Ok((keys, duplex))
+            // The server knows its own identity; reporting it keeps both roles symmetric.
+            Ok((keys, duplex, Some(identity)))
         }
     }
 }
@@ -806,6 +855,7 @@ async fn build_session<D>(
     duplex: D,
     role: Role,
     keys: HandshakeKeys,
+    server_identity: Option<[u8; 32]>,
     config: SessionConfig,
     padding: Arc<dyn PaddingPolicy>,
 ) -> Result<Session, SessionError>
@@ -837,9 +887,11 @@ where
         next_ping: AtomicU64::new(1),
         ping_waiters: Mutex::new(HashMap::new()),
         keys_available: Notify::new(),
+        closed_notify: Notify::new(),
         capacity: Mutex::new(Vec::new()),
         closed: AtomicBool::new(false),
         close_reason: Mutex::new(None),
+        server_identity,
         stats: SessionStats::default(),
         config,
     });

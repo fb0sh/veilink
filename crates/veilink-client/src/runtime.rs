@@ -32,8 +32,8 @@ pub struct ClientContext {
     pub limits: LimitsConfig,
     /// Whether target domains may be written to the log.
     pub log_domains: bool,
-    /// Runtime counters.
-    pub stats: Stats,
+    /// Runtime counters. Shared so that the uplink and the proxy handlers use the same set.
+    pub stats: Arc<Stats>,
 }
 
 impl ClientContext {
@@ -45,7 +45,7 @@ impl ClientContext {
             router: ArcSwap::from_pointee(Router::new(direct, None)),
             limits: settings.limits.clone(),
             log_domains: settings.log.log_domains,
-            stats: Stats::new(),
+            stats: Arc::new(Stats::new()),
         }
     }
 
@@ -63,6 +63,15 @@ impl ClientContext {
             }
         }
         self.router.store(Arc::new(router));
+    }
+
+    /// Removes the remote tunnel so that whitelisted requests fail closed immediately.
+    ///
+    /// This is deliberately separate from [`ClientContext::set_remote_tunnel`], which preserves an
+    /// existing tunnel when given `None`.
+    pub fn clear_remote_tunnel(&self) {
+        let direct = DirectTunnel::new(Duration::from_millis(self.limits.connect_timeout_ms));
+        self.router.store(Arc::new(Router::new(direct, None)));
     }
 
     /// Replaces the whitelist atomically.
@@ -196,6 +205,7 @@ pub fn spawn_stats_reporter(
                 frames_received = snap.frames_received,
                 cover_bytes_sent = snap.cover_bytes_sent,
                 session_connects = snap.session_connects,
+                session_failures = snap.session_failures,
                 "client statistics"
             );
         }

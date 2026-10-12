@@ -13,6 +13,7 @@
 
 mod commands;
 mod logging;
+mod reload;
 
 use std::process::ExitCode;
 
@@ -38,6 +39,10 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Run the local proxy client.
+    Client(commands::client::ClientArgs),
+    /// Run the remote relay server.
+    Server(commands::server::ServerArgs),
     /// Generate a high-entropy authentication key.
     Keygen(commands::keygen::KeygenArgs),
     /// Validate a configuration file and exit.
@@ -66,6 +71,8 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
             commands::keygen::run(&args)?;
             Ok(ExitCode::SUCCESS)
         }
+        Command::Client(args) => commands::client::run(args),
+        Command::Server(args) => commands::server::run(args),
         Command::Check(args) => {
             logging::init(logging::InitOptions {
                 default_level: "warn",

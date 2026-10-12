@@ -32,7 +32,7 @@
 //! | [`tunnel`] | the `Tunnel` abstraction and fail-closed route selection |
 //! | [`proxy`] | the per-connection request/response handler |
 //! | [`runtime`] | listener, limits and shared context |
-//! | [`stats`] | runtime counters |
+//! | [`stats`] | runtime counters (from `veilink-protocol`) |
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -41,14 +41,14 @@ pub mod http;
 pub mod proxy;
 pub mod routing;
 pub mod runtime;
-pub mod stats;
 pub mod tunnel;
+pub mod uplink;
 
 pub use routing::{RouteError, RouteSelection, RouteTarget};
 pub use runtime::{ClientContext, ClientRuntime};
-pub use stats::{Stats, StatsSnapshot};
 pub use tunnel::{DirectTunnel, Router, Tunnel};
 pub use veilink_protocol::duplex::{self, BoxStream, BufStream, Duplex, SpliceOutcome};
+pub use veilink_protocol::stats::{self, Stats, StatsSnapshot};
 
 /// The default local proxy address, mirroring [`veilink_config::DEFAULT_CLIENT_LISTEN`].
 pub const DEFAULT_LISTEN: &str = veilink_config::DEFAULT_CLIENT_LISTEN;

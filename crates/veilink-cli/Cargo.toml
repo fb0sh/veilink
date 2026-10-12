@@ -16,6 +16,13 @@ path = "src/main.rs"
 veilink-config = { workspace = true }
 veilink-crypto = { workspace = true }
 veilink-rules = { workspace = true }
+veilink-client = { workspace = true }
+veilink-server = { workspace = true }
+veilink-protocol = { workspace = true }
+veilink-transport = { workspace = true }
+
+tokio = { workspace = true, features = ["rt-multi-thread", "net", "io-util", "time", "sync", "macros", "signal"] }
+notify = { workspace = true }
 
 clap = { workspace = true, features = ["std", "help", "usage", "error-context", "derive", "wrap_help"] }
 anyhow = { workspace = true }
@@ -25,5 +32,6 @@ zeroize = { workspace = true, features = ["alloc"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 assert_cmd = "2.0"
 predicates = "3.1"

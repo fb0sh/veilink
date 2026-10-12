@@ -28,7 +28,9 @@
 pub mod egress;
 pub mod policy;
 pub mod resolver;
+pub mod runtime;
 
 pub use egress::{Egress, EgressError};
 pub use policy::{EgressPolicy, PolicyDeny};
 pub use resolver::{ResolveError, Resolver};
+pub use runtime::{ServerContext, ServerError, ServerRuntime};
