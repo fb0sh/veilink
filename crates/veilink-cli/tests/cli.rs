@@ -34,7 +34,11 @@ fn keygen_prints_a_usable_key() {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     let key = stdout.trim();
-    assert_eq!(stdout.lines().count(), 1, "stdout must contain only the key");
+    assert_eq!(
+        stdout.lines().count(),
+        1,
+        "stdout must contain only the key"
+    );
 
     let psk = Psk::parse(key).expect("generated key must parse");
     assert_eq!(psk.len(), 32);
@@ -130,7 +134,9 @@ fn check_accepts_a_valid_client_config() {
         .arg("--verbose")
         .assert()
         .success()
-        .stdout(predicate::str::contains("valid Veilink client configuration"))
+        .stdout(predicate::str::contains(
+            "valid Veilink client configuration",
+        ))
         .stdout(predicate::str::contains("DOMAIN-SUFFIX,github.com"))
         .stdout(predicate::str::contains(GOOD_KEY).not());
 }
@@ -185,7 +191,9 @@ fn check_detects_server_config_and_missing_file() {
         .arg(&path)
         .assert()
         .success()
-        .stdout(predicate::str::contains("valid Veilink server configuration"));
+        .stdout(predicate::str::contains(
+            "valid Veilink server configuration",
+        ));
 
     veilink()
         .args(["check", "--config"])

@@ -5,6 +5,10 @@ members = [
     "crates/veilink-config",
     "crates/veilink-rules",
     "crates/veilink-crypto",
+    "crates/veilink-protocol",
+    "crates/veilink-client",
+    "crates/veilink-server",
+    "tests",
 ]
 
 [workspace.package]

@@ -1,0 +1,27 @@
+[package]
+name = "veilink-server"
+description = "Veilink server: authenticated relay with remote DNS resolution and SSRF-safe IPv4 egress"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+veilink-config = { workspace = true }
+veilink-rules = { workspace = true }
+veilink-crypto = { workspace = true }
+veilink-protocol = { workspace = true }
+
+tokio = { workspace = true, features = ["rt", "net", "io-util", "time", "sync", "macros"] }
+tokio-util = { workspace = true, features = ["io"] }
+hickory-resolver = { workspace = true, features = ["tokio-runtime", "system-config"] }
+ipnet = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+arc-swap = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "net", "io-util", "time", "sync", "macros", "test-util"] }
+tempfile = { workspace = true }

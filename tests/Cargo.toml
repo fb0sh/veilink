@@ -1,0 +1,56 @@
+[package]
+name = "veilink-tests"
+description = "Integration, conformance and negative security tests for Veilink"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+# Integration tests are declared explicitly so that `src/` can be a shared harness rather than a
+# test target of its own.
+autotests = false
+
+[lib]
+name = "veilink_testkit"
+path = "src/lib.rs"
+
+[dependencies]
+veilink-config = { workspace = true }
+veilink-rules = { workspace = true }
+veilink-crypto = { workspace = true }
+veilink-protocol = { workspace = true }
+veilink-client = { workspace = true }
+veilink-server = { workspace = true }
+
+tokio = { workspace = true, features = ["rt-multi-thread", "net", "io-util", "time", "sync", "macros", "process"] }
+httparse = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["std", "fmt", "env-filter"] }
+base64 = { workspace = true }
+rand = { workspace = true }
+tempfile = { workspace = true }
+rcgen = { workspace = true, features = ["pem", "crypto", "ring"] }
+tokio-rustls = { workspace = true, features = ["ring", "tls12", "logging"] }
+rustls = { workspace = true, features = ["ring", "std", "tls12", "logging"] }
+futures-util = { workspace = true, features = ["std"] }
+
+[[test]]
+name = "http_proxy"
+path = "http_proxy.rs"
+[[test]]
+name = "https_connect"
+path = "https_connect.rs"
+[[test]]
+name = "websocket"
+path = "websocket.rs"
+[[test]]
+name = "streaming"
+path = "streaming.rs"
+[[test]]
+name = "whitelist"
+path = "whitelist.rs"
+[[test]]
+name = "concurrency"
+path = "concurrency.rs"
