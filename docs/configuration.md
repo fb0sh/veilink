@@ -192,7 +192,7 @@ veilink check --config FILE [--type auto|client|server] [--verbose]
 |------|------|------|
 | `--config`, `-c FILE` | 必填 | 要校验的配置文件。 |
 | `--type` | `auto` | 强制 schema。`auto` 用内容探测：忽略注释与空行后，若存在以 `server:` 或 `whitelist:` 开头的行则按 **client** 校验，否则按 **server** 校验（`client.yaml` 必须有 `server`，而 `server.yaml` 会把 `server` 当作未知字段拒绝，因此两者不会混淆）。 |
-| `--verbose` | 关 | 校验通过后打印生效设置（`server`、`server_name`、`listen`、`transport`、`state_dir`、规则数量与每条规则；服务端打印 egress 策略、允许端口、DNS、连接/流上限）。**密钥永远不会被打印。** |
+| `--verbose` | 关 | 校验通过后打印生效设置（`server`、`server_name`、`listen`、`transport`、`state_dir`、**`identity pin`**、规则数量与每条规则；服务端打印 egress 策略、允许端口、DNS、连接/流上限）。`identity pin` 一行会明确显示已 pin 的指纹，未设置时显示 `(not set: only the PSK is trusted)`——因为"是否 pin 了服务端身份"是安全相关设置，不应该只能靠人眼在 YAML 里找。**密钥永远不会被打印。** |
 
 行为：
 

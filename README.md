@@ -42,6 +42,91 @@ TLS 1.3 + HTTP/2，看起来像普通 HTTP/2 会话；也可以选择裸 TLS 帧
 
 ---
 
+---
+
+## 目录
+
+1. [项目简介](#项目简介)
+2. [验证状态](#验证状态)
+3. [快速开始](#快速开始)
+4. [功能列表](#功能列表)
+5. [架构示意](#架构示意)
+6. [系统要求](#系统要求)
+7. [编译方式](#编译方式)
+8. [Server 部署](#server-部署)
+9. [Client 部署](#client-部署)
+10. [认证密钥生成](#认证密钥生成)
+11. [YAML 白名单示例](#yaml-白名单示例)
+12. [curl 测试](#curl-测试)
+13. [浏览器代理配置](#浏览器代理配置)
+14. [Git 代理配置](#git-代理配置)
+15. [常见问题](#常见问题)
+16. [DNS 隐私边界](#dns-隐私边界)
+17. [安全模型](#安全模型)
+18. [未实现 / 当前限制](#未实现-当前限制)
+19. [许可证](#许可证)
+
+---
+
+## 验证状态
+
+本仓库的每一条能力断言都有对应的测试或代码依据。当前状态（可在本机复现，命令见"编译方式"）：
+
+| 项目 | 结果 |
+|------|------|
+| 测试 | `cargo test --workspace` → **383 passed, 0 failed**（连续多次全量运行无抖动） |
+| 静态检查 | `cargo clippy --workspace --all-targets -- -D warnings` → 干净 |
+| 格式 | `cargo fmt --all -- --check` → 干净 |
+| 发布构建 | `cargo build --workspace --release --locked` → 成功 |
+| 基准 | `cargo bench -p veilink-benches --no-run` → 3 个目标编译通过 |
+| 模糊测试 | `fuzz/` 下 5 个 `cargo-fuzz` 目标，实测约 **1536 万次执行、零崩溃**（抽样，非证明） |
+| 端到端 | 真实双进程 + 真实 `curl`：TLS 会话两端 `alpn=vlp/1` 且 `channel_tag` 一致，`route=PROXY`，服务端开流并上报 `uploaded`/`downloaded` 字节数 |
+
+测试层次与逐文件覆盖见 [docs/testing.md](docs/testing.md)；模糊测试的目标、命令与实测数据见同文档第 7 节。
+
+---
+
+## 快速开始
+
+假设 VPS 为 `203.0.113.10`，本机想通过它访问 `github.com`。**两侧的 `key` 必须完全相同。**
+
+```bash
+# 1) 构建（产物 target/release/veilink）
+cargo build --release
+
+# 2) 生成认证密钥（高熵随机值，不是口令）
+KEY=$(./target/release/veilink keygen --quiet)
+
+# 3) 在 VPS 上：写配置并启动
+cat > server.yaml <<EOF
+listen: "0.0.0.0:443"
+key: "$KEY"
+state_dir: "/var/lib/veilink"
+allowed_ports: [80, 443]        # 推荐：限制客户端能访问的目标端口
+EOF
+sudo ./target/release/veilink server --config server.yaml
+# 记下启动日志里的 identity=...，下一步用作 server_identity_pin
+
+# 4) 在本机：写配置并启动
+cat > client.yaml <<EOF
+server: "203.0.113.10:443"
+key: "$KEY"
+server_identity_pin: "<上一步的 identity=>"   # 建议：检测"VPS 被换掉"
+whitelist:
+  - "DOMAIN-SUFFIX,github.com"
+EOF
+./target/release/veilink client --config client.yaml
+
+# 5) 验证：客户端日志应打印 route=PROXY，请求应当成功
+curl -x http://127.0.0.1:7890 -I https://github.com/
+```
+
+命中白名单的请求走加密隧道（`route=PROXY`）；未命中的请求**直连**（`route=DIRECT`）。若隧道不可用，
+命中白名单的请求会**失败（502）而不会回退直连**——这是刻意设计，见[安全模型](#安全模型)。
+
+生产部署（systemd、防火墙、权限、备份、放在中间层后面）见 [Server 部署](#server-部署) 与
+[Client 部署](#client-部署)。
+
 ## 功能列表
 
 **协议与密码学**

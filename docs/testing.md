@@ -48,15 +48,15 @@ cargo bench -p veilink-benches -- --test      # 每个基准只跑一次，用�
 
 | 层次 | 数量 |
 |------|------|
-| 单元测试（`crates/**` 各 lib/bin 目标，含 `veilink-transport` 18、`veilink-protocol` 78、`veilink-crypto` 76） | 299 |
+| 单元测试（`crates/**` 各 lib/bin 目标，含 `veilink-transport` 18、`veilink-protocol` 79、`veilink-crypto` 76、`veilink-privacy` 20） | 303 |
 | CLI 集成测试（`crates/veilink-cli/tests/cli.rs`） | 10 |
-| 端到端集成测试（`tests/*.rs`） | 67 |
+| 端到端集成测试（`tests/*.rs`） | 68 |
 | doc-test | 2 |
-| **合计** | **378 通过 / 0 失败 / 0 ignored** |
+| **合计** | **383 通过 / 0 失败 / 0 ignored** |
 
-各目标分布：`veilink` 2、`veilink-client` 32、`veilink-config` 21、`veilink-crypto` 76、
-`veilink-privacy` 20、`veilink-protocol` 78、`veilink-rules` 34、`veilink-server` 16、
-`veilink-testkit` 2、`veilink-transport` 18、`cli.rs` 10；集成测试 67（见 3.1 表）；
+各目标分布：`veilink` 5、`veilink-client` 32、`veilink-config` 21、`veilink-crypto` 76、
+`veilink-privacy` 20、`veilink-protocol` 79、`veilink-rules` 34、`veilink-server` 16、
+`veilink-testkit` 2、`veilink-transport` 18、`cli.rs` 10；集成测试 68（见 3.1 表）；
 doc-test 2（`veilink-config` 与 `veilink-rules` 各 1）。
 
 （测试数量随代码变化；以 `cargo test --workspace` 的输出为准。）

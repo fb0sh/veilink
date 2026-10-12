@@ -49,6 +49,96 @@ fingerprinting, and **cannot** hide the fact that you are using Veilink. The ful
 
 ---
 
+---
+
+## Table of contents
+
+1. [Introduction](#introduction)
+2. [Verification status](#verification-status)
+3. [Quick start](#quick-start)
+4. [Features](#features)
+5. [Architecture](#architecture)
+6. [Requirements](#requirements)
+7. [Building](#building)
+8. [Server deployment](#server-deployment)
+9. [Client deployment](#client-deployment)
+10. [Generating the authentication key](#generating-the-authentication-key)
+11. [Whitelist YAML example](#whitelist-yaml-example)
+12. [curl tests](#curl-tests)
+13. [Browser proxy configuration](#browser-proxy-configuration)
+14. [Git proxy configuration](#git-proxy-configuration)
+15. [FAQ](#faq)
+16. [DNS privacy boundary](#dns-privacy-boundary)
+17. [Security model](#security-model)
+18. [Not implemented / current limitations](#not-implemented-current-limitations)
+19. [License](#license)
+
+---
+
+## Verification status
+
+Every capability claim in this repository has a test or a line of code behind it. Current state,
+reproducible on your own machine with the commands in [Building](#building):
+
+| Item | Result |
+|------|--------|
+| Tests | `cargo test --workspace` -> **383 passed, 0 failed** (repeated full runs, no flakiness) |
+| Lints | `cargo clippy --workspace --all-targets -- -D warnings` -> clean |
+| Formatting | `cargo fmt --all -- --check` -> clean |
+| Release build | `cargo build --workspace --release --locked` -> succeeds |
+| Benchmarks | `cargo bench -p veilink-benches --no-run` -> all 3 targets compile |
+| Fuzzing | 5 `cargo-fuzz` targets under `fuzz/`; the completed run covered about **15.4 million executions with zero crashes** (a sample, not a proof) |
+| End to end | Two real processes plus real `curl`: both ends negotiated `alpn=vlp/1` with a matching `channel_tag`, the proxy logged `route=PROXY`, and the server opened the stream and reported its `uploaded`/`downloaded` byte counts |
+
+See [docs/testing.md](docs/testing.md) for the test layers and per-file coverage, and section 7 of the
+same document for the fuzzing targets, commands and measured results.
+
+---
+
+## Quick start
+
+Assume your VPS is `203.0.113.10` and you want this machine to reach `github.com` through it. The
+`key` **must be identical on both sides.**
+
+```bash
+# 1) Build (the binary lands in target/release/veilink)
+cargo build --release
+
+# 2) Generate an authentication key (a high-entropy random value, not a passphrase)
+KEY=$(./target/release/veilink keygen --quiet)
+
+# 3) On the VPS: write the configuration and start the server
+cat > server.yaml <<EOF
+listen: "0.0.0.0:443"
+key: "$KEY"
+state_dir: "/var/lib/veilink"
+allowed_ports: [80, 443]        # recommended: restrict which target ports clients may reach
+EOF
+sudo ./target/release/veilink server --config server.yaml
+# Note the identity=... line it prints; use it as server_identity_pin below
+
+# 4) On this machine: write the configuration and start the client
+cat > client.yaml <<EOF
+server: "203.0.113.10:443"
+key: "$KEY"
+server_identity_pin: "<the identity= from above>"   # recommended: detects a swapped VPS
+whitelist:
+  - "DOMAIN-SUFFIX,github.com"
+EOF
+./target/release/veilink client --config client.yaml
+
+# 5) Verify: the client log should show route=PROXY and the request should succeed
+curl -x http://127.0.0.1:7890 -I https://github.com/
+```
+
+A request that matches the whitelist travels through the encrypted tunnel (`route=PROXY`); one that
+does not is connected **directly** (`route=DIRECT`). If the tunnel is unavailable, a whitelisted
+request **fails with 502 rather than falling back to a direct connection** - that is deliberate, see
+[Security model](#security-model).
+
+For a production deployment (systemd, firewall, permissions, backups, sitting behind a middlebox) see
+[Server deployment](#server-deployment) and [Client deployment](#client-deployment).
+
 ## Features
 
 **Protocol and cryptography**

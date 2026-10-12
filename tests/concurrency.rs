@@ -205,26 +205,32 @@ async fn statistics_track_traffic() {
     );
     assert_eq!(written as usize, size);
 
-    let snapshot = client.context.stats.snapshot();
-    assert_eq!(snapshot.connections_total, 1);
-    assert_eq!(snapshot.requests_direct, 1);
-    assert!(
-        snapshot.bytes_down >= size as u64,
-        "bytes_down was {} for a {size} byte body",
-        snapshot.bytes_down
-    );
-    assert!(snapshot.bytes_up > 0, "bytes_up was not counted");
-    // The origin bumps its counter after the write completes; curl can have the body a moment
-    // earlier, so wait for the origin's own view instead of racing it.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    while origin.stats().bytes_out.load(Ordering::Relaxed) < size as u64 {
+    // Every byte counter below is updated by whoever moved the bytes, and some of them (the
+    // per-session totals) are folded into the client's statistics by a periodic reporter. curl can
+    // finish before any of that lands, so each counter is awaited to a deadline rather than read
+    // once: reading it once races the reporting task and fails for a reason unrelated to what this
+    // test is about.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    loop {
+        let snapshot = client.context.stats.snapshot();
+        let origin_out = origin.stats().bytes_out.load(Ordering::Relaxed);
+        if snapshot.bytes_down >= size as u64 && snapshot.bytes_up > 0 && origin_out >= size as u64
+        {
+            break;
+        }
         assert!(
             std::time::Instant::now() < deadline,
-            "the origin reported only {} of {size} bytes",
-            origin.stats().bytes_out.load(Ordering::Relaxed)
+            "counters did not settle: client bytes_down={} bytes_up={}, origin bytes_out={origin_out} \
+             (expected bytes_down >= {size} and bytes_up > 0)",
+            snapshot.bytes_down,
+            snapshot.bytes_up
         );
         tokio::time::sleep(std::time::Duration::from_millis(25)).await;
     }
+
+    let snapshot = client.context.stats.snapshot();
+    assert_eq!(snapshot.connections_total, 1);
+    assert_eq!(snapshot.requests_direct, 1);
 
     client.stop().await;
     origin.stop().await;
