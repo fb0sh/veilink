@@ -54,11 +54,12 @@ pub mod psk;
 pub mod rng;
 pub mod x25519;
 
-pub use aead::{AlgorithmId, AlgorithmSet, AeadKey, ALL_ALGORITHMS, NONCE_LEN, TAG_LEN};
+pub use aead::{AeadKey, AlgorithmId, AlgorithmSet, ALL_ALGORITHMS, NONCE_LEN, TAG_LEN};
 pub use epoch::{Direction, RecvSequence, SendSequence, SequenceMode};
 pub use handshake::{
-    ClientHandshake, ClientHello, HandshakeState, ServerHandshake, ServerHello, AUTH_CONFIRM_LEN,
-    CLIENT_HELLO_LEN, PROTOCOL_VERSION, SERVER_HELLO_LEN,
+    keys_equal, run_handshake_in_memory, ClientHandshake, ClientHello, HandshakeState,
+    ServerHandshake, ServerHello, AUTH_CONFIRM_LEN, CLIENT_HELLO_LEN, PROTOCOL_VERSION,
+    SERVER_HELLO_LEN,
 };
 pub use identity::{
     fingerprint_matches_pin, fingerprint_of, parse_fingerprint_pin, Identity, IdentityError,
@@ -93,7 +94,9 @@ pub enum CryptoError {
         actual: usize,
     },
     /// A tag verification failed, or the plaintext was not authentic.
-    #[error("authentication failed: the frame was modified, forged, or belongs to another session")]
+    #[error(
+        "authentication failed: the frame was modified, forged, or belongs to another session"
+    )]
     AuthenticationFailed,
     /// An input was shorter than the fixed structure requires.
     #[error("truncated input: needed {needed} bytes, found {actual}")]

@@ -234,10 +234,7 @@ mod tests {
         assert_eq!(pool.available(), 7);
         assert_eq!(pool.consumed_total(), 1);
         // The key cannot be taken twice.
-        assert!(matches!(
-            pool.take(id),
-            Err(CryptoError::UnknownKeyId(_))
-        ));
+        assert!(matches!(pool.take(id), Err(CryptoError::UnknownKeyId(_))));
         assert_eq!(pool.rejected_total(), 1);
         drop(pair);
     }
@@ -329,7 +326,10 @@ mod tests {
         let live: Vec<u32> = first.iter().map(|(id, _)| *id).collect();
         let second = pool.publish(4).unwrap();
         for (id, _) in &second {
-            assert!(!live.contains(id), "identifier {id} collided with a live key");
+            assert!(
+                !live.contains(id),
+                "identifier {id} collided with a live key"
+            );
         }
         assert_eq!(pool.available(), 8);
     }

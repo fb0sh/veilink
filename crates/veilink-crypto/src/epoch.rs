@@ -164,10 +164,7 @@ mod tests {
 
     #[test]
     fn directions_are_inverses() {
-        assert_eq!(
-            Direction::ClientToServer.peer(),
-            Direction::ServerToClient
-        );
+        assert_eq!(Direction::ClientToServer.peer(), Direction::ServerToClient);
         assert_eq!(Direction::ServerToClient.peer(), Direction::ClientToServer);
         for direction in [Direction::ClientToServer, Direction::ServerToClient] {
             assert_eq!(Direction::from_u8(direction.as_u8()).unwrap(), direction);
@@ -191,7 +188,10 @@ mod tests {
         // A replay of the previous frame.
         assert!(matches!(
             checker.accept(0),
-            Err(CryptoError::Replay { got: 0, expected: 1 })
+            Err(CryptoError::Replay {
+                got: 0,
+                expected: 1
+            })
         ));
         // A skipped frame would desynchronise the control key chain.
         assert!(checker.accept(2).is_err());

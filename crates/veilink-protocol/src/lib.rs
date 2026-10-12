@@ -13,10 +13,13 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod codec;
 pub mod duplex;
 pub mod frame;
 pub mod message;
+pub mod session;
 
+pub use codec::{BucketedPadding, CodecError, PaddingPolicy, SessionCodec, DATA_EPOCH};
 pub use duplex::{copy_one_way, splice, BoxStream, BufStream, Duplex, SpliceOutcome};
 pub use frame::{
     FrameError, FrameHeader, RawFrame, AUTHENTICATED_HEADER_LEN, FRAME_VERSION, MAX_CIPHERTEXT,
@@ -24,4 +27,8 @@ pub use frame::{
 };
 pub use message::{
     Message, MessageError, MessageType, OpenStatus, StreamKind, MAX_HOST_LEN, MAX_TEXT_LEN,
+};
+pub use session::{
+    start_session, IncomingStream, Role, Session, SessionConfig, SessionError, SessionStats,
+    SessionStatsSnapshot, VlpStream, DEFAULT_WINDOW, MAX_STREAM_DATA, MIN_WINDOW,
 };

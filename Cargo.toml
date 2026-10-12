@@ -8,6 +8,7 @@ members = [
     "crates/veilink-protocol",
     "crates/veilink-client",
     "crates/veilink-server",
+    "crates/veilink-transport",
     "tests",
 ]
 

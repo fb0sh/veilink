@@ -10,6 +10,7 @@ repository.workspace = true
 
 [dependencies]
 veilink-crypto = { workspace = true }
+subtle = { workspace = true }
 
 tokio = { workspace = true, features = ["rt", "io-util", "sync", "time", "macros"] }
 tokio-util = { workspace = true, features = ["io"] }

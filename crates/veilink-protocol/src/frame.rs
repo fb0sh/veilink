@@ -454,7 +454,9 @@ mod tests {
     async fn oversized_handshake_messages_are_rejected() {
         let (mut writer, mut reader) = tokio::io::duplex(32 * 1024);
         let message = vec![0u8; MAX_HANDSHAKE_MESSAGE + 1];
-        let error = write_handshake_frame(&mut writer, &message).await.unwrap_err();
+        let error = write_handshake_frame(&mut writer, &message)
+            .await
+            .unwrap_err();
         assert!(error.to_string().contains("exceeds the maximum"));
         // And on the read side: a forged length prefix is refused.
         let mut forged = vec![FRAME_VERSION, FRAME_TYPE_HANDSHAKE];
@@ -467,7 +469,10 @@ mod tests {
     #[tokio::test]
     async fn truncated_frames_surface_as_end_of_stream() {
         let (mut writer, mut reader) = tokio::io::duplex(256);
-        writer.write_all(&[FRAME_VERSION, FRAME_TYPE_AUTHENTICATED]).await.unwrap();
+        writer
+            .write_all(&[FRAME_VERSION, FRAME_TYPE_AUTHENTICATED])
+            .await
+            .unwrap();
         writer.write_all(&[0u8; 10]).await.unwrap();
         drop(writer);
         let error = read_frame(&mut reader, false).await.unwrap_err();
@@ -477,7 +482,10 @@ mod tests {
     #[tokio::test]
     async fn a_bad_version_byte_is_refused_immediately() {
         let (mut writer, mut reader) = tokio::io::duplex(64);
-        writer.write_all(&[0x00, FRAME_TYPE_AUTHENTICATED]).await.unwrap();
+        writer
+            .write_all(&[0x00, FRAME_TYPE_AUTHENTICATED])
+            .await
+            .unwrap();
         drop(writer);
         let error = read_frame(&mut reader, false).await.unwrap_err();
         assert!(error.to_string().contains("frame version"));

@@ -14,7 +14,6 @@
 //!   per-frame key derived from a one-time key exchange, so the target host name, the port, the
 //!   stream identifier and every byte of payload are all inside the encrypted payload.
 
-
 /// The kind of stream being opened.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -456,7 +455,11 @@ impl Message {
                 encoder.u8(u8::from(*request_more));
             }
             Message::Ping { nonce } | Message::Pong { nonce } => encoder.u64(*nonce),
-            Message::GoAway { code, reason } | Message::Error { code, message: reason } => {
+            Message::GoAway { code, reason }
+            | Message::Error {
+                code,
+                message: reason,
+            } => {
                 encoder.u32(*code);
                 encoder.text(reason, MAX_TEXT_LEN);
             }
@@ -748,10 +751,7 @@ mod tests {
 
     #[test]
     fn stream_ids_are_reported() {
-        assert_eq!(
-            Message::StreamFin { stream_id: 9 }.stream_id(),
-            Some(9)
-        );
+        assert_eq!(Message::StreamFin { stream_id: 9 }.stream_id(), Some(9));
         assert_eq!(Message::Ping { nonce: 0 }.stream_id(), None);
     }
 
@@ -850,7 +850,7 @@ mod tests {
         encoded.extend_from_slice(&443u16.to_be_bytes());
         encoded.extend_from_slice(&1024u32.to_be_bytes());
         encoded.extend_from_slice(&60000u16.to_be_bytes());
-        encoded.extend_from_slice(&vec![b'a'; 8]);
+        encoded.extend_from_slice(&[b'a'; 8]);
         assert!(matches!(
             Message::decode(&encoded).unwrap_err(),
             MessageError::FieldTooLong {
@@ -913,9 +913,13 @@ mod tests {
 
     #[test]
     fn large_key_offers_are_bounded() {
-        let keys: Vec<(u32, [u8; 32])> = (0..MAX_KEY_OFFER as u32).map(|i| (i, [0u8; 32])).collect();
+        let keys: Vec<(u32, [u8; 32])> =
+            (0..MAX_KEY_OFFER as u32).map(|i| (i, [0u8; 32])).collect();
         let encoded = Message::KeyOffer { keys: keys.clone() }.encode();
-        assert_eq!(Message::decode(&encoded).unwrap(), Message::KeyOffer { keys });
+        assert_eq!(
+            Message::decode(&encoded).unwrap(),
+            Message::KeyOffer { keys }
+        );
     }
 
     #[test]

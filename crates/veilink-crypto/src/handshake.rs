@@ -334,7 +334,11 @@ impl ClientHandshake {
     pub fn verify_server_confirm(mut self, bytes: &[u8]) -> Result<HandshakeKeys, CryptoError> {
         let keys = match self.keys.take() {
             Some(keys) => keys,
-            None => return Err(CryptoError::Handshake("handshake was not started".to_string())),
+            None => {
+                return Err(CryptoError::Handshake(
+                    "handshake was not started".to_string(),
+                ))
+            }
         };
         let expected = confirmation_mac(
             &keys.auth_s2c,
@@ -692,7 +696,10 @@ mod tests {
         let mut other_server = ServerHandshake::new(&psk(), 4, TEST_IDENTITY);
         let _ = other_server.on_client_hello(&other_hello).unwrap();
         other_client.on_server_hello(&tampered).unwrap();
-        assert_ne!(other_client.transcript_hash(), other_server.transcript_hash());
+        assert_ne!(
+            other_client.transcript_hash(),
+            other_server.transcript_hash()
+        );
     }
 
     #[test]

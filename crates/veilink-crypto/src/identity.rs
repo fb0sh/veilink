@@ -273,14 +273,18 @@ pub fn parse_fingerprint_pin(input: &str) -> Result<Vec<u8>, String> {
     }
     let mut bytes = Vec::with_capacity(cleaned.len() / 2);
     for chunk in cleaned.as_bytes().chunks_exact(2) {
-        let text = std::str::from_utf8(chunk).map_err(|_| "fingerprint is not ASCII".to_string())?;
+        let text =
+            std::str::from_utf8(chunk).map_err(|_| "fingerprint is not ASCII".to_string())?;
         bytes.push(
-            u8::from_str_radix(text, 16).map_err(|_| "fingerprint is not hexadecimal".to_string())?,
+            u8::from_str_radix(text, 16)
+                .map_err(|_| "fingerprint is not hexadecimal".to_string())?,
         );
     }
     // Accept the full 32-byte fingerprint, or a short prefix for convenience.
     if bytes.len() != 32 && bytes.len() < 4 {
-        return Err("fingerprint must be the full 64-character value or at least 4 bytes".to_string());
+        return Err(
+            "fingerprint must be the full 64-character value or at least 4 bytes".to_string(),
+        );
     }
     if bytes.len() > 32 {
         return Err("fingerprint is longer than a SHA-256 digest".to_string());
@@ -388,10 +392,7 @@ mod tests {
         std::fs::set_permissions(&path, permissions).unwrap();
 
         let error = Identity::load(&path).unwrap_err();
-        assert!(matches!(
-            error,
-            IdentityError::InsecurePermissions { .. }
-        ));
+        assert!(matches!(error, IdentityError::InsecurePermissions { .. }));
         assert!(error.to_string().contains("chmod 600"));
     }
 
@@ -482,7 +483,10 @@ mod tests {
         let identity = Identity::load_or_create(dir.path()).unwrap();
         let text = format!("{identity:?}");
         let secret_hex = hex_encode(&*identity.secret().to_bytes());
-        assert!(!text.contains(&secret_hex), "debug output leaked the private key");
+        assert!(
+            !text.contains(&secret_hex),
+            "debug output leaked the private key"
+        );
         assert!(text.contains(&identity.fingerprint_hex()));
     }
 }

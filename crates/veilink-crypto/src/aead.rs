@@ -140,6 +140,11 @@ impl AlgorithmSet {
     pub fn len(self) -> usize {
         self.iter().count()
     }
+
+    /// Always `false`: a decoded set never contains zero algorithms.
+    pub fn is_empty(self) -> bool {
+        self.0 == 0
+    }
 }
 
 /// A single-use AEAD key.
@@ -352,7 +357,10 @@ mod tests {
                 key.open_in_place(&nonce, aad, &mut buffer).unwrap_err(),
                 CryptoError::AuthenticationFailed
             );
-            assert!(buffer.is_empty(), "unauthenticated plaintext was left behind");
+            assert!(
+                buffer.is_empty(),
+                "unauthenticated plaintext was left behind"
+            );
 
             // Changing the AAD (this is how a frame header substitution is caught).
             let mut buffer = plaintext.clone();
@@ -378,9 +386,11 @@ mod tests {
         let aad = b"aad";
 
         let mut first = plaintext.clone();
-        key.seal_in_place(&[0u8; NONCE_LEN], aad, &mut first).unwrap();
+        key.seal_in_place(&[0u8; NONCE_LEN], aad, &mut first)
+            .unwrap();
         let mut second = plaintext.clone();
-        key.seal_in_place(&[1u8; NONCE_LEN], aad, &mut second).unwrap();
+        key.seal_in_place(&[1u8; NONCE_LEN], aad, &mut second)
+            .unwrap();
         assert_ne!(first, second);
     }
 

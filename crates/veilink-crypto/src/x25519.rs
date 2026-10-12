@@ -117,7 +117,10 @@ impl OneTimeKeyPair {
     ///
     /// Consumes the key pair: the caller must not be able to use it again, which is what guarantees
     /// one frame per one-time key.
-    pub fn decapsulate(self, sender_public: &[u8; X25519_LEN]) -> Result<SharedSecret, CryptoError> {
+    pub fn decapsulate(
+        self,
+        sender_public: &[u8; X25519_LEN],
+    ) -> Result<SharedSecret, CryptoError> {
         let public = RecipientPublicKey::from_bytes(*sender_public)?;
         let peer = PublicKey::from(public.0);
         let shared = self.secret.diffie_hellman(&peer);

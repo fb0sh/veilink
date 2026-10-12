@@ -31,7 +31,7 @@ use subtle::ConstantTimeEq;
 use x25519_dalek::SharedSecret;
 use zeroize::Zeroizing;
 
-use crate::aead::{AlgorithmId, AlgorithmSet, AeadKey, Nonce, NONCE_LEN};
+use crate::aead::{AeadKey, AlgorithmId, AlgorithmSet, Nonce, NONCE_LEN};
 use crate::epoch::Direction;
 use crate::psk::{DerivedKey, Psk};
 use crate::CryptoError;
@@ -412,8 +412,20 @@ mod tests {
         let psk = Psk::from_bytes(&(0u8..32).collect::<Vec<u8>>()).unwrap();
         let transcript = Transcript::new();
         let hash = transcript.hash();
-        let one = derive_handshake_keys(&psk, hash, [1u8; HASH_LEN], AlgorithmSet::all(), AlgorithmSet::all());
-        let two = derive_handshake_keys(&psk, hash, [1u8; HASH_LEN], AlgorithmSet::all(), AlgorithmSet::all());
+        let one = derive_handshake_keys(
+            &psk,
+            hash,
+            [1u8; HASH_LEN],
+            AlgorithmSet::all(),
+            AlgorithmSet::all(),
+        );
+        let two = derive_handshake_keys(
+            &psk,
+            hash,
+            [1u8; HASH_LEN],
+            AlgorithmSet::all(),
+            AlgorithmSet::all(),
+        );
         assert_eq!(one.session_id, two.session_id);
         assert_eq!(one.auth_c2s.as_bytes(), two.auth_c2s.as_bytes());
         assert_eq!(
@@ -424,21 +436,40 @@ mod tests {
 
     #[test]
     fn a_different_exporter_changes_every_key() {
-        let psk = Psk::from_bytes(&(0u8..32).map(|i| i.wrapping_mul(7).wrapping_add(3)).collect::<Vec<u8>>()).unwrap();
+        let psk = Psk::from_bytes(
+            &(0u8..32)
+                .map(|i| i.wrapping_mul(7).wrapping_add(3))
+                .collect::<Vec<u8>>(),
+        )
+        .unwrap();
         let hash = Transcript::new().hash();
-        let a = derive_handshake_keys(&psk, hash, [1u8; HASH_LEN], AlgorithmSet::all(), AlgorithmSet::all());
-        let b = derive_handshake_keys(&psk, hash, [2u8; HASH_LEN], AlgorithmSet::all(), AlgorithmSet::all());
+        let a = derive_handshake_keys(
+            &psk,
+            hash,
+            [1u8; HASH_LEN],
+            AlgorithmSet::all(),
+            AlgorithmSet::all(),
+        );
+        let b = derive_handshake_keys(
+            &psk,
+            hash,
+            [2u8; HASH_LEN],
+            AlgorithmSet::all(),
+            AlgorithmSet::all(),
+        );
         assert_ne!(a.session_id, b.session_id);
         assert_ne!(a.auth_c2s.as_bytes(), b.auth_c2s.as_bytes());
-        assert_ne!(
-            a.control_root_c2s.as_bytes(),
-            b.control_root_c2s.as_bytes()
-        );
+        assert_ne!(a.control_root_c2s.as_bytes(), b.control_root_c2s.as_bytes());
     }
 
     #[test]
     fn a_different_transcript_changes_every_key() {
-        let psk = Psk::from_bytes(&(0u8..32).map(|i| i.wrapping_mul(7).wrapping_add(3)).collect::<Vec<u8>>()).unwrap();
+        let psk = Psk::from_bytes(
+            &(0u8..32)
+                .map(|i| i.wrapping_mul(7).wrapping_add(3))
+                .collect::<Vec<u8>>(),
+        )
+        .unwrap();
         let mut first = Transcript::new();
         first.absorb(b"a");
         let mut second = Transcript::new();
@@ -464,14 +495,24 @@ mod tests {
     fn a_different_psk_changes_every_key() {
         let hash = Transcript::new().hash();
         let a = derive_handshake_keys(
-            &Psk::from_bytes(&(0u8..32).map(|i| i.wrapping_mul(3).wrapping_add(1)).collect::<Vec<u8>>()).unwrap(),
+            &Psk::from_bytes(
+                &(0u8..32)
+                    .map(|i| i.wrapping_mul(3).wrapping_add(1))
+                    .collect::<Vec<u8>>(),
+            )
+            .unwrap(),
             hash,
             [1u8; HASH_LEN],
             AlgorithmSet::all(),
             AlgorithmSet::all(),
         );
         let b = derive_handshake_keys(
-            &Psk::from_bytes(&(0u8..32).map(|i| i.wrapping_mul(11).wrapping_add(5)).collect::<Vec<u8>>()).unwrap(),
+            &Psk::from_bytes(
+                &(0u8..32)
+                    .map(|i| i.wrapping_mul(11).wrapping_add(5))
+                    .collect::<Vec<u8>>(),
+            )
+            .unwrap(),
             hash,
             [1u8; HASH_LEN],
             AlgorithmSet::all(),
@@ -539,7 +580,10 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         for _ in 0..64 {
             let (key, nonce) = chain.material();
-            assert!(seen.insert((key.algorithm() as u8, nonce)), "control key repeated");
+            assert!(
+                seen.insert((key.algorithm() as u8, nonce)),
+                "control key repeated"
+            );
             chain.advance();
         }
         assert_eq!(chain.step(), 64);
@@ -555,8 +599,12 @@ mod tests {
         let (send_key, send_nonce) = sender.material();
         let (recv_key, recv_nonce) = receiver.material();
         let mut buffer = b"ping".to_vec();
-        send_key.seal_in_place(&send_nonce, b"aad", &mut buffer).unwrap();
-        recv_key.open_in_place(&recv_nonce, b"aad", &mut buffer).unwrap();
+        send_key
+            .seal_in_place(&send_nonce, b"aad", &mut buffer)
+            .unwrap();
+        recv_key
+            .open_in_place(&recv_nonce, b"aad", &mut buffer)
+            .unwrap();
         assert_eq!(buffer, b"ping");
 
         // Re-deriving without advancing gives the same key: a replayed frame would decrypt again,
@@ -633,12 +681,24 @@ mod tests {
         let (base_key, base_nonce) = derive_frame_material(&shared, &base).unwrap();
 
         let variants: Vec<FrameKeyContext> = vec![
-            FrameKeyContext { session_id: base.session_id + 1, ..base },
+            FrameKeyContext {
+                session_id: base.session_id + 1,
+                ..base
+            },
             FrameKeyContext { epoch: 2, ..base },
-            FrameKeyContext { direction: Direction::ServerToClient, ..base },
-            FrameKeyContext { sequence: 2, ..base },
+            FrameKeyContext {
+                direction: Direction::ServerToClient,
+                ..base
+            },
+            FrameKeyContext {
+                sequence: 2,
+                ..base
+            },
             FrameKeyContext { key_id: 8, ..base },
-            FrameKeyContext { algorithm: AlgorithmId::Aes256Gcm, ..base },
+            FrameKeyContext {
+                algorithm: AlgorithmId::Aes256Gcm,
+                ..base
+            },
         ];
         for variant in variants {
             let (key, nonce) = derive_frame_material(&shared, &variant).unwrap();
