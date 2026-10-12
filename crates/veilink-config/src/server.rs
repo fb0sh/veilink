@@ -79,6 +79,10 @@ impl fmt::Debug for ServerConfig {
 }
 
 /// A validated server configuration, ready to start the server runtime.
+///
+/// `Clone` is derived so that a caller can build a variant (for example, to probe a different
+/// listen port) without re-reading and re-validating the file.
+#[derive(Clone)]
 pub struct ServerSettings {
     /// Listen address.
     pub listen: SocketAddr,

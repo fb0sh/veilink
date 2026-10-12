@@ -148,10 +148,11 @@ exporter 不同（`connector.rs` 的测试 `each_session_has_a_different_exporte
 
 - 证书的**签名**仍会对自己的公钥验证（`verify_tls13_signature`），因此对端必须证明它持有其出示
   的公钥。这阻止了"任意字节都算证书"的退化路径，但**不提供身份**。
-- 如果客户端 pin 了服务端身份指纹（`fingerprint_matches_pin`，比较的是 `SERVER_HELLO` 中被
+- 如果客户端 pin 了服务端身份指纹（`server_identity_pin` → `ClientSettings.expected_identity` →
+  `UplinkConfig.expected_identity` → `fingerprint_matches_pin`，比较的是 `SERVER_HELLO` 中被
   transcript/MAC 覆盖的长期身份公钥），则可以检测出"共享同一 PSK 的另一台服务器替换了原服务器"。
-  在客户端 uplink 中，`UplinkConfig::expected_identity` 目前**总是 `None`**（见第 7 节），
-  也就是说 pinning 能力已实现但**未接入配置**。
+  这是**已接入配置**的能力（客户端 `server_identity_pin`，接受完整指纹或 ≥4 字节前缀），
+  未设置时不 pin。
 
 ---
 
@@ -269,16 +270,14 @@ exporter 不同（`connector.rs` 的测试 `each_session_has_a_different_exporte
 
 ---
 
-## 7. 其它已实现但尚未接入的密码学能力
+## 7. 已接入配置的相关能力
 
-以下是**代码中已实现、但当前运行时未启用**的能力，不应被当作已生效的保护：
-
-- **服务端身份指纹 pinning**：`veilink_crypto::fingerprint_matches_pin` /
-  `parse_fingerprint_pin` 已实现并有测试，`UplinkConfig` 也有 `expected_identity` 字段，但
-  `UplinkConfig::from_settings` 把它硬编码为 `None`，`ClientConfig` 中也没有对应的 YAML 字段。
-  也就是说：**当前无法通过配置启用 pinning**。
-- 服务端会打印身份指纹（`identity` 与 `short` 两个字段），操作者可以据此人工核对，但客户端不会
-  自动校验。
+- **服务端身份指纹 pinning 已可用**：客户端 `server_identity_pin`（完整 64 位十六进制指纹，或
+  `aa:bb:cc:dd` / `aabbccdd` 形式的 ≥4 字节前缀）会解析为 `expected_identity`，并在握手完成后、
+  任何流量转发之前校验。不匹配时连接被拒绝（`UplinkError::IdentityMismatch`）。
+  服务端启动日志中的 `identity=<64 位十六进制>` 就是要 pin 的值。
+  未设置该字段时不做 pin：此时只有 PSK 保护你免受"同 PSK 的另一台服务器冒充"。
+- 服务端身份私钥仍然**不参与**任何帧密钥派生（见 6.2），因此 pin 与否都不影响已录制帧的机密性。
 
 ---
 

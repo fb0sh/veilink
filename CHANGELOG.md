@@ -67,7 +67,8 @@ forward-secret protocol, and a strict-privacy layer.
   rejected.
 - Low-order and all-zero public keys rejected; unauthenticated plaintext wiped on tag failure.
 - Long-term server identity (X25519) generated on first start, stored at mode `0600`, refusing to
-  load if group- or other-readable; SHA-256 fingerprint for logging and optional pinning.
+  load if group- or other-readable; SHA-256 fingerprint for logging and for client pinning
+  (`server_identity_pin`).
 - Fail-closed randomness: a single `OsRng`-based source, no fallback, unbiased uniform sampling.
 - `zeroize`-based erasure of keys and buffers, with the limitations documented rather than hidden.
 
@@ -193,9 +194,8 @@ forward-secret protocol, and a strict-privacy layer.
 - Secret material is redacted from logs and `Debug` output, private key files are created with
   `0600`, and an insecure `identity.key` stops startup.
 - Known limitations are documented rather than papered over: no IPv6, no UDP/QUIC, no graceful PSK
-  rotation or per-client identity/quotas, server identity pinning implemented but not wired into the
-  client configuration, scheduler *pacing* not currently effective, cover traffic limited to idle
-  periods, and no resistance to metadata analysis, website fingerprinting, endpoint compromise or
+  rotation or per-client identity/quotas, scheduler *pacing* not currently effective, cover traffic
+  limited to idle periods, and no resistance to metadata analysis, website fingerprinting, endpoint compromise or
   quantum cryptanalysis. Veilink makes **no** claim of zero detection rate, absolute anonymity or
   untraceability.
 

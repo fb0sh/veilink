@@ -100,7 +100,22 @@ async fn proxies_https_connect_through_the_tunnel() {
     let client_stats = client.context.stats.snapshot();
     assert_eq!(client_stats.requests_proxied, 1);
     assert!(client_stats.bytes_up > 0 && client_stats.bytes_down > 0);
-    assert!(client_stats.frames_sent > 0 && client_stats.frames_received > 0);
+    // The session counters are folded into the client's statistics by a periodic reporter, so give
+    // it a moment rather than racing it.
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let snapshot = client.context.stats.snapshot();
+        if snapshot.frames_sent > 0 && snapshot.frames_received > 0 {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the session frame counters were never reported: sent={} received={}",
+            snapshot.frames_sent,
+            snapshot.frames_received
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
 
     client.stop().await;
     server.stop().await;
@@ -210,6 +225,58 @@ async fn a_wrong_key_is_rejected_and_the_request_fails_closed() {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     assert!(client.context.stats.snapshot().session_failures >= 1);
+
+    client.stop().await;
+    server.stop().await;
+    origin.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_pinned_identity_is_enforced() {
+    // The client pins an identity that is not the server's, so the session must be refused.
+    let origin = TestServer::start().await.unwrap();
+    let key = test_psk();
+    let server = RunningServer::start(&key, Transport::Tls).await;
+
+    let listen = veilink_testkit::settings::free_listen_addr();
+    let yaml = format!(
+        "server: \"{}\"\nkey: \"{}\"\nlisten: \"{listen}\"\ntransport: tls\n\
+         server_name: \"veilink.local\"\nserver_identity_pin: \"00112233\"\n\
+         whitelist:\n  - \"CIDR,127.0.0.0/8\"\n",
+        server.addr,
+        key.to_base64url().as_str()
+    );
+    let settings = veilink_config::ClientConfig::from_yaml(&yaml)
+        .unwrap()
+        .validate()
+        .unwrap();
+    assert_eq!(
+        settings.expected_identity,
+        Some(vec![0x00, 0x11, 0x22, 0x33])
+    );
+
+    let client = veilink_testkit::veilink::RunningTunnelClient::start_with_settings(settings).await;
+    // The uplink will keep failing the pin check, so the tunnel never becomes ready.
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    assert!(
+        !client
+            .context
+            .router
+            .load()
+            .remote()
+            .map(|t| t.is_ready())
+            .unwrap_or(false),
+        "a pinned identity mismatch produced a usable tunnel"
+    );
+    let result = get_via_proxy_with_status(client.addr, &format!("{}/hello", origin.origin()));
+    assert_eq!(result.status(), 502, "stdout={:?}", result.stdout);
+    assert_eq!(
+        origin
+            .stats()
+            .connections
+            .load(std::sync::atomic::Ordering::Relaxed),
+        0
+    );
 
     client.stop().await;
     server.stop().await;

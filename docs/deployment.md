@@ -364,9 +364,11 @@ stream {
 - 客户端与服务端必须配置相同的 `transport`（`h2` 或 `tls`）。
 - `h2` 传输要求路径上的每个组件都能正确处理 HTTP/2，且**不能**改写或缓冲 body；任何会重写
   HTTP/2 的中间盒都会破坏隧道。若不确定，改用 `transport: tls`。
-- ALPN：客户端与服务端都宣告 `h2`（优先）与 `vlp/1`。若某段链路丢掉了 ALPN，服务端会按裸 VLP
-  帧处理（`check_alpn(None) == Ok(ALPN_VLP)`）；这处理的是"没有 ALPN"，而**不是** TLS 卸载。
-  若 ALPN 协商成其它值（例如 `http/1.1`），连接会被拒绝（`UnexpectedAlpn`）。
+- ALPN：每种传输把自己的 ALPN **固定为唯一值**（`h2` 传输 → `h2`；`tls` 传输 → `vlp/1`），
+  服务端用 `acceptor_for(identity, ALPN)` 限制，握手后用 `check_alpn` 校验。因此**客户端与服务端
+  的 `transport` 必须一致**，不一致会得到明确的握手失败。若某段链路丢掉了 ALPN，而本端已指定期望
+  协议，则按该协议处理；若 ALPN 协商成其它值（例如 `http/1.1`），连接会被拒绝（`UnexpectedAlpn`）。
+  这些都处理的是"没有 ALPN / 错误的 ALPN"，而**不是** TLS 卸载。
 
 ---
 

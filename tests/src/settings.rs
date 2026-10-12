@@ -18,13 +18,40 @@ pub const TEST_KEY_OTHER: &str = "0f1e2d3c4b5a69788796a5b4c3d2e1f00123456789abcd
 
 /// Returns a currently free loopback port.
 ///
-/// There is an unavoidable race between closing the probe socket and binding the real listener, but
-/// on an ephemeral port range this is reliable in practice and keeps the tests independent.
+/// There is an unavoidable race between closing the probe socket and binding the real listener:
+/// another test in this same binary can take the port in that window. Callers therefore bind
+/// through [`bind_client_with_retry`], which probes a fresh port instead of failing.
 pub fn free_listen_addr() -> SocketAddr {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("cannot bind a probe socket");
     let addr = listener.local_addr().expect("no local address");
     drop(listener);
     addr
+}
+
+/// Binds a client runtime, retrying on a fresh port when the probe address was taken.
+///
+/// A test that fails because of an unrelated port race teaches nothing, and the retry cannot mask a
+/// real bug: a client that genuinely cannot bind fails every attempt.
+pub async fn bind_client_with_retry(settings: &veilink_config::ClientSettings) -> ClientRuntime {
+    let mut candidate = settings.clone();
+    let mut last = None;
+    for attempt in 0..16 {
+        match ClientRuntime::bind(&candidate).await {
+            Ok(runtime) => return runtime,
+            Err(error) => {
+                last = Some(error);
+                // Probe a different port rather than retrying an address that is already taken.
+                if attempt < 15 {
+                    candidate.listen = free_listen_addr();
+                }
+            }
+        }
+    }
+    panic!(
+        "the client could not bind any of 16 probed ports (last tried {}): {}",
+        candidate.listen,
+        last.expect("at least one attempt")
+    );
 }
 
 /// Builds validated client settings listening on `listen` with the given whitelist rules.
@@ -79,11 +106,13 @@ pub struct RunningClient {
 
 impl RunningClient {
     /// Starts the client runtime.
-    pub async fn start(settings: ClientSettings) -> Self {
-        let runtime = ClientRuntime::bind(&settings)
-            .await
-            .expect("the client must bind its listen address");
-        let addr = runtime.local_addr().expect("listen address");
+    pub async fn start(mut settings: ClientSettings) -> Self {
+        let mut runtime = bind_client_with_retry(&settings).await;
+        // A retry lands on a different port than the one in `settings`; record what was bound so
+        // callers that reconstruct the address agree with the runtime.
+        settings.listen = runtime.local_addr().expect("listen address");
+        let addr = settings.listen;
+        let _ = &mut runtime;
         let context = runtime.context();
         let (tx, rx) = oneshot::channel();
         let handle = tokio::spawn(async move {

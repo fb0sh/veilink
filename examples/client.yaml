@@ -44,6 +44,12 @@ whitelist:
 # TLS server name (SNI). Defaults to the `server` host, or `veilink.local` for an IP.
 # server_name: "veilink.local"
 
+# Pin the server's long-term identity. Copy the fingerprint `veilink server` prints at
+# startup (the `identity=` field). Any server presenting a different identity is refused
+# before a single request is forwarded, which turns "the VPS was swapped" into a visible
+# failure instead of a silent one. A short prefix is accepted.
+# server_identity_pin: "aa:bb:cc:dd"
+
 # Where session caches are stored. Defaults to the platform state directory.
 # state_dir: "/home/you/.local/state/veilink"
 

@@ -18,13 +18,19 @@
 
 VLP/1 运行在一条已经建立的、可靠且有序的双向字节流之上。这条字节流由传输层提供：
 
-| 传输 | ALPN | 字节流形态 |
-|------|------|-----------|
+| 传输 | 固定 ALPN | 字节流形态 |
+|------|-----------|-----------|
 | `tls` | `vlp/1` | TLS 1.3 之上直接是 VLP/1 帧流 |
 | `h2`（默认） | `h2` | TLS 1.3 + HTTP/2；一个 `POST` 请求/响应 body 对承载 VLP/1 帧流 |
 
-两种传输承载**完全相同**的 VLP/1 帧与密码学；区别仅在外层封装。ALPN 未协商时按 `vlp/1`
-处理（`check_alpn(None) == Ok(ALPN_VLP)`）。
+两种传输承载**完全相同**的 VLP/1 帧与密码学；区别仅在外层封装。
+
+传输由配置选择，并且**每种传输把自己的 ALPN 固定为唯一值**：客户端用
+`client_config_for(Some(ALPN))`、服务端用 `acceptor_for(identity, ALPN)`，握手后用
+`check_alpn(negotiated, Some(required))` 校验。因此客户端与服务端的 `transport` 不一致会得到一个
+**明确的握手失败**，而不是两端用不同分帧方式各说各话。ALPN 缺失时，若已指定期望协议则按该协议处理
+（`check_alpn(None, Some(wanted))`），若没有任何期望则按裸 `vlp/1` 处理；协商成其它值（例如
+`http/1.1`）一律拒绝（`UnexpectedAlpn`）。
 
 协议分两层：
 

@@ -39,6 +39,7 @@ Veilink 有两个配置文件，字段极少，其余全部是协议的一部分
 | `listen` | string | `"127.0.0.1:7890"` | 本地代理监听地址。必须是 `IP:PORT`（`parse_listen` 用 `SocketAddr` 解析），因此 `localhost:7890` 会被拒绝——请写 `127.0.0.1:7890`。默认只监听回环，不对局域网开放。 |
 | `transport` | `h2` \| `tls` | `h2` | 外层承载方式。两者运行完全相同的 VLP/1；`h2` 让外层看起来像普通 HTTP/2 会话，`tls` 是更低开销的直连帧流。**必须与服务端一致**（服务端按配置选择，不做自动降级）。 |
 | `server_name` | string | `server` 的域名；若 `server` 是 IPv4 字面量则为 `"veilink.local"` | TLS SNI / 证书名。非空；若为域名则按 `HostName` 规范化（IDNA、小写、去尾点），若为 IP 字面量则原样接受。 |
+| `server_identity_pin` | string \| 缺省 | 缺省（不 pin） | 固定服务端长期身份指纹。接受 64 位十六进制完整指纹，或较短前缀（`aabbccdd`、`aa:bb:cc:dd`，至少 4 字节）。指纹取自 `veilink server` 启动日志的 `identity=` 字段（也接受 `short=` 形式的前缀）。**设置后，若服务端出示的身份不匹配，连接在任何流量转发之前被拒绝**（`UplinkError::IdentityMismatch`），把"VPS 被换掉"从静默事件变成可见故障。解析失败会在 `veilink check` 中报 `server_identity_pin` 诊断。 |
 | `state_dir` | path | 平台状态目录（见下） | 客户端配置中的状态目录。**当前客户端不向其中写入任何文件**：`veilink-client` 的代码从不读取或创建它，只有 `veilink check --verbose` 会打印它。该字段是为将来的会话缓存保留的。 |
 | `log` | mapping | 见 1.4 | 日志配置。 |
 | `limits` | mapping | 见 1.5 | 资源上限。 |
@@ -239,7 +240,8 @@ veilink check --config FILE [--type auto|client|server] [--verbose]
   64–4096 字节、最多 40 个突发；预算 4 KiB/s、每会话 256 MiB）。
 - **算法列表与轮换策略**：固定为 AES-256-GCM / ChaCha20-Poly1305 / AES-128-GCM，逐帧轮换。
 - **一次性密钥池大小**：`SessionConfig` 默认 256，非配置项。
-- **服务端身份指纹 pinning**：能力已实现但客户端配置**未接入**（`expected_identity` 恒为 `None`）。
+- **服务端身份指纹 pinning**：**已接入配置**（`server_identity_pin`，见 1.3）。未设置时不做 pin，
+  只信任 PSK；建议在生产环境设置。
 - **客户端出站规则**：客户端只有白名单；egress 约束完全在服务端。
 - **IPv6**：任何位置都不支持 IPv6 出口。
 - **keepalive 周期**：没有定时 PING；空闲由 `idle_timeout_ms` 关闭。

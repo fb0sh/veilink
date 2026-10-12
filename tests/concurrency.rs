@@ -214,7 +214,17 @@ async fn statistics_track_traffic() {
         snapshot.bytes_down
     );
     assert!(snapshot.bytes_up > 0, "bytes_up was not counted");
-    assert!(origin.stats().bytes_out.load(Ordering::Relaxed) >= size as u64);
+    // The origin bumps its counter after the write completes; curl can have the body a moment
+    // earlier, so wait for the origin's own view instead of racing it.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while origin.stats().bytes_out.load(Ordering::Relaxed) < size as u64 {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the origin reported only {} of {size} bytes",
+            origin.stats().bytes_out.load(Ordering::Relaxed)
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
 
     client.stop().await;
     origin.stop().await;

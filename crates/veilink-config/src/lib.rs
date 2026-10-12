@@ -251,6 +251,34 @@ mod tests {
     }
 
     #[test]
+    fn a_server_identity_pin_is_parsed_and_validated() {
+        let ok = format!(
+            "server: \"203.0.113.10:443\"\nkey: \"{GOOD_KEY}\"\nserver_identity_pin: \"aabbccdd\"\n"
+        );
+        let settings = ClientConfig::from_yaml(&ok).unwrap().validate().unwrap();
+        assert_eq!(
+            settings.expected_identity,
+            Some(vec![0xaa, 0xbb, 0xcc, 0xdd])
+        );
+
+        let full = "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99                    :aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99";
+        let yaml = format!(
+            "server: \"203.0.113.10:443\"\nkey: \"{GOOD_KEY}\"\nserver_identity_pin: \"{full}\"\n"
+        );
+        let settings = ClientConfig::from_yaml(&yaml).unwrap().validate().unwrap();
+        assert_eq!(settings.expected_identity.unwrap().len(), 32);
+
+        let bad = format!(
+            "server: \"203.0.113.10:443\"\nkey: \"{GOOD_KEY}\"\nserver_identity_pin: \"not-hex\"\n"
+        );
+        let error = ClientConfig::from_yaml(&bad)
+            .unwrap()
+            .validate()
+            .unwrap_err();
+        assert!(error.to_string().contains("server_identity_pin"), "{error}");
+    }
+
+    #[test]
     fn change_classification() {
         let base = ClientConfig::from_yaml(&client_yaml("whitelist: [\"DOMAIN,a.com\"]\n"))
             .unwrap()

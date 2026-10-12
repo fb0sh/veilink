@@ -643,6 +643,27 @@ mod tests {
         .unwrap()
     }
 
+    /// Builds codecs that may only use `algorithm`.
+    ///
+    /// Restricting the negotiated set makes the algorithm choice deterministic, which is what the
+    /// per-algorithm round-trip tests need.
+    fn codecs_with_algorithm(
+        algorithm: veilink_crypto::AlgorithmId,
+    ) -> (SessionCodec, SessionCodec) {
+        let (mut client_keys, mut server_keys) =
+            run_handshake_in_memory(&psk(), [4u8; 32], [0x33; 32]).unwrap();
+        let only = veilink_crypto::AlgorithmSet::from_mask(algorithm.mask_bit()).unwrap();
+        client_keys.c2s_algorithms = only;
+        client_keys.s2c_algorithms = only;
+        server_keys.c2s_algorithms = only;
+        server_keys.s2c_algorithms = only;
+        let padding = Arc::new(BucketedPadding::new()) as Arc<dyn PaddingPolicy>;
+        (
+            SessionCodec::new(&client_keys, Direction::ClientToServer, padding.clone(), 64),
+            SessionCodec::new(&server_keys, Direction::ServerToClient, padding, 64),
+        )
+    }
+
     fn codecs() -> (SessionCodec, SessionCodec) {
         let (client_keys, server_keys) =
             run_handshake_in_memory(&psk(), [4u8; 32], [0x33; 32]).unwrap();
@@ -747,9 +768,62 @@ mod tests {
             let decoded = server.open_application(&header, &body).unwrap();
             assert_eq!(decoded, message);
         }
-        assert_eq!(algorithms.len(), 3, "not all algorithms were exercised");
+        // The selection is random, so a small sample need not contain all three. What is
+        // guaranteed is that adjacent frames differ, so at least two algorithms must appear; the
+        // exhaustive check lives in `every_algorithm_round_trips`.
+        assert!(
+            algorithms.len() >= 2,
+            "the algorithm selection did not vary: {algorithms:?}"
+        );
         assert_eq!(client.peer_keys_used(), 8);
         assert_eq!(server.local_keys_available(), 64 - 8);
+    }
+
+    /// Every algorithm the suite offers must actually work, not merely be advertised.
+    #[test]
+    fn every_algorithm_round_trips() {
+        let mut exercised = Vec::new();
+        for algorithm in veilink_crypto::AlgorithmSet::all().iter() {
+            let (mut client, mut server) = codecs_with_algorithm(algorithm);
+            exchange_initial_keys(&mut client, &mut server);
+            let message = Message::StreamData {
+                stream_id: 9,
+                data: b"each algorithm".to_vec(),
+            };
+            let frame = client.seal_application(&message).unwrap();
+            let (header, body) = open_frame(&frame);
+            assert_eq!(
+                header.algorithm,
+                algorithm.as_u8(),
+                "the codec used an algorithm it was not permitted to use"
+            );
+            assert_eq!(server.open_application(&header, &body).unwrap(), message);
+            exercised.push(algorithm);
+        }
+        assert_eq!(
+            exercised.len(),
+            veilink_crypto::AlgorithmSet::all().len(),
+            "the suite does not offer every algorithm"
+        );
+        assert!(exercised.len() >= 3, "fewer algorithms than expected");
+    }
+
+    /// A codec that was never given permission to use an algorithm must not emit it.
+    #[test]
+    fn an_algorithm_outside_the_negotiated_set_is_never_used() {
+        let algorithm = veilink_crypto::AlgorithmId::Aes128Gcm;
+        let (mut client, mut server) = codecs_with_algorithm(algorithm);
+        exchange_initial_keys(&mut client, &mut server);
+        for _ in 0..32 {
+            let message = Message::StreamData {
+                stream_id: 1,
+                data: b"restricted".to_vec(),
+            };
+            let frame = client.seal_application(&message).unwrap();
+            let (header, body) = open_frame(&frame);
+            assert_eq!(header.algorithm, algorithm.as_u8());
+            server.open_application(&header, &body).unwrap();
+        }
     }
 
     #[test]

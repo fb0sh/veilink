@@ -44,6 +44,14 @@ pub struct ClientConfig {
     /// TLS server name (SNI) presented to the server. Defaults to the `server` host name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_name: Option<String>,
+    /// Pin the server's long-term identity.
+    ///
+    /// Accepts the 64-character identity fingerprint printed by `veilink server` at startup, or a
+    /// shorter prefix (`aabbccdd` or `aa:bb:cc:dd`) for convenience. When set, a server presenting
+    /// any other identity is refused before any traffic is forwarded, which turns "the operator
+    /// swapped the VPS" from a silent event into a visible failure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_identity_pin: Option<String>,
     /// Directory holding generated session caches. Defaults to the platform state directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state_dir: Option<PathBuf>,
@@ -71,11 +79,17 @@ impl fmt::Debug for ClientConfig {
             .field("state_dir", &self.state_dir)
             .field("log", &self.log)
             .field("limits", &self.limits)
+            .field("server_identity_pin", &self.server_identity_pin)
             .finish()
     }
 }
 
 /// A validated client configuration, ready to start the client runtime.
+///
+/// `Clone` is derived so that a caller can build a variant (for example, to probe a different
+/// listen port) without re-reading and re-validating the file. The shared parts are cheap to clone,
+/// and the key is a fixed-size array rather than a heap buffer.
+#[derive(Clone)]
 pub struct ClientSettings {
     /// Remote server endpoint.
     pub server: Endpoint,
@@ -95,6 +109,8 @@ pub struct ClientSettings {
     pub log: LogConfig,
     /// Resource limits.
     pub limits: LimitsConfig,
+    /// Optional pinned server identity fingerprint.
+    pub expected_identity: Option<Vec<u8>>,
     /// Where the configuration was loaded from, when it came from a file.
     pub source_path: Option<PathBuf>,
 }
@@ -186,6 +202,18 @@ impl ClientConfig {
             Err(e) => diagnostics.push("whitelist", e.to_string()),
         }
 
+        // --- server identity pin ---
+        let expected_identity = match self.server_identity_pin.as_deref() {
+            None => None,
+            Some(raw) => match veilink_crypto::parse_fingerprint_pin(raw) {
+                Ok(pin) => Some(pin),
+                Err(reason) => {
+                    diagnostics.push("server_identity_pin", reason);
+                    None
+                }
+            },
+        };
+
         // --- server_name ---
         let server_name = match self.server_name.clone() {
             Some(name) => {
@@ -225,6 +253,7 @@ impl ClientConfig {
             listen: listen.expect("validated above"),
             transport: self.transport,
             server_name: server_name.expect("validated above"),
+            expected_identity,
             state_dir: self.state_dir.unwrap_or_else(default_state_dir),
             log: self.log,
             limits: self.limits,
@@ -257,6 +286,7 @@ impl ClientSettings {
         if self.server != next.server
             || self.transport != next.transport
             || self.server_name != next.server_name
+            || self.expected_identity != next.expected_identity
             || !self.psk.ct_eq(&next.psk)
         {
             return ClientConfigChange::Session;

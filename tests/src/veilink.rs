@@ -13,6 +13,29 @@ use veilink_config::{ClientConfig, ServerConfig, Transport};
 use veilink_crypto::Psk;
 use veilink_server::runtime::{ServerContext, ServerRuntime};
 
+/// Binds a server, retrying on a fresh port when the probe address was taken by another test in
+/// the same binary.
+async fn bind_server_with_retry(settings: &veilink_config::ServerSettings) -> ServerRuntime {
+    let mut candidate = settings.clone();
+    let mut last = None;
+    for attempt in 0..16 {
+        match ServerRuntime::bind(&candidate).await {
+            Ok(runtime) => return runtime,
+            Err(error) => {
+                last = Some(error);
+                if attempt < 15 {
+                    candidate.listen = super::settings::free_listen_addr();
+                }
+            }
+        }
+    }
+    panic!(
+        "the server could not bind any of 16 probed ports (last tried {}): {}",
+        candidate.listen,
+        last.expect("at least one attempt")
+    );
+}
+
 /// A running Veilink server.
 pub struct RunningServer {
     /// The address the server listens on.
@@ -69,7 +92,7 @@ impl RunningServer {
             .expect("server yaml")
             .validate()
             .expect("server settings");
-        let runtime = ServerRuntime::bind(&settings).await.expect("server binds");
+        let runtime = bind_server_with_retry(&settings).await;
         let addr = runtime.local_addr().expect("server addr");
         let context = runtime.context();
         let (tx, rx) = oneshot::channel();
@@ -142,7 +165,11 @@ impl RunningTunnelClient {
         let mut config = ClientConfig::from_yaml(&yaml).expect("client yaml");
         config.state_dir = Some(std::env::temp_dir().join("veilink-e2e-state"));
         let settings = config.validate().expect("client settings");
+        RunningTunnelClient::start_with_settings(settings).await
+    }
 
+    /// Starts a client from settings that were built by hand.
+    pub async fn start_with_settings(settings: veilink_config::ClientSettings) -> Self {
         let runtime = ClientRuntime::bind(&settings).await.expect("client binds");
         let addr = runtime.local_addr().expect("client addr");
         let context = runtime.context();

@@ -61,7 +61,7 @@ TLS 1.3 + HTTP/2，看起来像普通 HTTP/2 会话；也可以选择裸 TLS 帧
 - TLS 1.3（rustls + ring），ALPN `h2` / `vlp/1`；`transport: h2`（默认）或 `tls`。
 - HTTP/2 作为**承载**：一个长连接 `POST` + 流式响应体，VLP/1 负责真正的多路复用。
 - 自签名证书 + TLS exporter 通道绑定：**认证靠 PSK，不靠 CA**；中继/重放握手无法通过。
-- 服务端身份指纹（现仅记录在日志中，客户端 pinning 能力已实现但尚未接入配置）。
+- 服务端身份指纹 pinning：`server_identity_pin` 接受完整指纹或 ≥4 字节前缀，身份不匹配时在任何流量转发之前拒绝连接。
 
 **客户端**
 
@@ -174,9 +174,10 @@ cargo build --release
 ./target/release/veilink --version
 ./target/release/veilink --help
 
-# 校验两个示例配置（不启动任何东西）
-./target/release/veilink check --config examples/client.yaml
-./target/release/veilink check --config examples/server.yaml
+# 校验配置（不启动任何东西）。注意：examples/*.yaml 里的 key 是占位符，
+# 直接校验会报 key 错误——先把 key 换成 `veilink keygen` 的输出再校验：
+./target/release/veilink check --config examples/client.yaml --verbose
+./target/release/veilink check --config examples/server.yaml --verbose
 
 # 测试（集成测试需要 curl）
 cargo test --workspace
@@ -329,6 +330,7 @@ whitelist:
 # 可选：
 # listen: "127.0.0.1:7890"
 # transport: h2                 # 或 tls，必须与服务端一致
+# server_identity_pin: "aa:bb:cc:dd"   # 建议：填入服务端启动日志的 identity=
 ```
 
 **3. 校验并运行**
@@ -371,7 +373,7 @@ veilink keygen --quiet                 # 只输出密钥
 - 客户端与服务端必须使用**完全相同**的 `key`。
 - 密钥是**对称共享秘密**：任何持有它的人都能使用你的服务器，也能冒充它。泄露后必须**两侧同时**
   更换（当前没有平滑轮换机制）。
-- 服务端日志中的身份指纹可以人工核对；客户端 pinning 能力已实现但**尚未接入配置**。
+- 建议把 `veilink server` 启动日志中的 `identity=` 填入客户端的 `server_identity_pin`：这样"VPS 被换掉"会变成可见的连接失败，而不是静默接受。
 
 ---
 
@@ -629,7 +631,7 @@ A：默认 `max_connections: 1024`、`max_streams_per_session: 512`、单帧最�
 - **UDP / QUIC / HTTP3 不支持**（只有 TCP）。
 - **没有终止式 TLS 卸载支持**：中间层只能做 L4（TCP/SNI）透传。
 - **没有按客户端的身份、配额或吊销**；PSK 轮换不平滑（需两侧同时更换）。
-- **服务端身份 pinning 未接入客户端配置**（能力已实现，`expected_identity` 恒为 `None`）。
+- **默认不 pin 服务端身份**：`server_identity_pin` 未设置时只信任 PSK，不会检测"同 PSK 的另一台服务器"（建议设置）。
 - **发送节奏整形当前不生效**：批量合并生效，但调度器的 `delay()` 不会被 writer 应用
   （睡眠条件与策略返回值互斥，见 [docs/privacy.md](docs/privacy.md) 第 3.2 节）。
 - **cover traffic 只覆盖空闲期**且最多约 60 个突发后停止；不是恒定速率生成器。

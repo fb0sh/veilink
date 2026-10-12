@@ -77,6 +77,15 @@ async fn run_async(args: ClientArgs) -> Result<ExitCode> {
         warn!("the whitelist is empty: every request will be routed DIRECT and no traffic will use the server");
     }
     info!("privacy mode: strict");
+    match &settings.expected_identity {
+        Some(pin) => info!(
+            pin = %pin.iter().map(|b| format!("{b:02x}")).collect::<String>(),
+            "the server identity is pinned; a different server will be refused"
+        ),
+        None => info!(
+            "the server identity is not pinned; compare the fingerprint printed by the server if you want to detect a swapped deployment"
+        ),
+    }
     info!("configure your application to use http://{listen} as its HTTP and HTTPS proxy");
 
     let stats_task =

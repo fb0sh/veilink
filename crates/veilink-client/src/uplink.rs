@@ -193,7 +193,7 @@ impl UplinkConfig {
             },
             reconnect_initial: Duration::from_millis(500),
             reconnect_max: Duration::from_secs(60),
-            expected_identity: None,
+            expected_identity: settings.expected_identity.clone(),
         }
     }
 }
