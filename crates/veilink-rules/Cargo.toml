@@ -1,0 +1,20 @@
+[package]
+name = "veilink-rules"
+description = "Whitelist rule engine for the Veilink encrypted proxy"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+arc-swap = "1.7"
+ipnet = { workspace = true, features = ["serde"] }
+idna = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+serde_yaml_ng = { workspace = true }

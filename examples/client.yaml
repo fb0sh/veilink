@@ -1,0 +1,60 @@
+# Veilink client configuration
+#
+# The only things you need to set are `server`, `key` and `whitelist`.
+# Everything else — padding, traffic scheduling, cover traffic, key rotation and
+# multiplexing — is part of the protocol and always runs.
+#
+# Generate a key on either machine with:
+#     veilink keygen
+# then paste the same value into `key` here and into examples/server.yaml.
+
+# Address of your VPS running `veilink server`.
+server: "203.0.113.10:443"
+
+# 256-bit pre-shared authentication key. Hexadecimal or Base64URL.
+key: "REPLACE_WITH_THE_OUTPUT_OF_veilink_keygen"
+
+# Requests whose target matches any rule below are forwarded through the server.
+# Everything else is connected directly, using your normal local DNS.
+#
+# Rules are OR-ed; the first match wins. An empty list means "everything DIRECT".
+whitelist:
+  # Exact host only: matches `github.com`, not `api.github.com`.
+  - "DOMAIN,github.com"
+  # Host and every subdomain: matches `github.com`, `api.github.com`, `raw.api.github.com`.
+  - "DOMAIN-SUFFIX,githubusercontent.com"
+  - "DOMAIN-SUFFIX,githubassets.com"
+  # Single-label wildcard: matches `api.dev.example.com`, not `api.example.com`.
+  - "DOMAIN,api.*.example.com"
+  # Exact IPv4 literal (only ever evaluated for IP-literal requests).
+  - "IP,1.1.1.1"
+  # IPv4 network.
+  - "CIDR,140.82.112.0/24"
+  # Uncomment to send everything through the server:
+  # - "*"
+
+# --- Optional settings, all with safe defaults ---
+
+# Local proxy listener. Defaults to 127.0.0.1:7890.
+# listen: "127.0.0.1:7890"
+
+# Outer transport: `h2` (default, looks like ordinary HTTP/2) or `tls`.
+# transport: h2
+
+# TLS server name (SNI). Defaults to the `server` host, or `veilink.local` for an IP.
+# server_name: "veilink.local"
+
+# Where session caches are stored. Defaults to the platform state directory.
+# state_dir: "/home/you/.local/state/veilink"
+
+# log:
+#   level: "info"        # or set RUST_LOG
+#   format: "text"       # or "json"
+#   log_domains: false   # keep false unless you need domains in the log
+
+# limits:
+#   max_connections: 1024
+#   max_streams_per_session: 512
+#   connect_timeout_ms: 10000
+#   idle_timeout_ms: 300000
+#   max_header_bytes: 65536

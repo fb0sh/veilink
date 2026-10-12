@@ -1,0 +1,28 @@
+[package]
+name = "veilink-crypto"
+description = "Cryptographic core for the Veilink protocol: PSK identity, per-frame AEAD key schedule, one-time receiver key pool"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+aes-gcm = { workspace = true, features = ["aes", "alloc"] }
+chacha20poly1305 = { workspace = true, features = ["alloc"] }
+x25519-dalek = { workspace = true, features = ["static_secrets", "zeroize"] }
+hkdf = { workspace = true }
+sha2 = { workspace = true }
+hmac = { workspace = true }
+subtle = { workspace = true }
+zeroize = { workspace = true, features = ["derive", "alloc"] }
+rand = { workspace = true }
+rand_core = { workspace = true, features = ["getrandom"] }
+getrandom = { workspace = true }
+base64 = { workspace = true, features = ["alloc"] }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+hex = "0.4"

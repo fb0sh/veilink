@@ -1,0 +1,54 @@
+# Veilink server configuration
+#
+# The server needs two things: a listen address and the same authentication key as
+# the client. Generate the key with `veilink keygen` and paste it below.
+#
+#   veilink server --config server.yaml
+#
+# On first start the server generates a long-term identity (X25519) and a self-signed
+# TLS 1.3 certificate in `state_dir`. Clients do not use PKI to trust this certificate:
+# they authenticate the server through the PSK-bound VLP/1 handshake, which is
+# cryptographically bound to the TLS session (see docs/cryptography.md).
+
+listen: "0.0.0.0:443"
+
+# Must be identical to the client's `key`.
+key: "REPLACE_WITH_THE_OUTPUT_OF_veilink_keygen"
+
+# --- Optional settings, all with safe defaults ---
+
+# Outer transport: `h2` (default) or `tls`. Must match the client.
+# transport: h2
+
+# Where the long-term identity and TLS certificate live.
+# state_dir: "/var/lib/veilink"
+
+# EGRESS POLICY -----------------------------------------------------------------
+# By default the server refuses to connect to loopback, private, link-local,
+# multicast and other special-use IPv4 destinations, and re-checks the address
+# after DNS resolution. This is what stops a compromised client from using your VPS
+# as a pivot into its own network or into cloud metadata services.
+#
+# Set this to `true` ONLY for local integration testing.
+# allow_private_targets: false
+
+# Restrict which destination ports clients may reach. Empty means "all ports".
+# allowed_ports: [80, 443, 8080, 8443]
+
+# dns:
+#   servers: ["1.1.1.1:53", "9.9.9.9:53"]   # empty = use the system resolver
+#   cache_size: 512
+#   timeout_ms: 5000
+#   attempts: 2
+
+# limits:
+#   max_connections: 1024
+#   max_streams_per_session: 512
+#   connect_timeout_ms: 10000
+#   idle_timeout_ms: 300000
+#   accept_rate_per_second: 64
+
+# log:
+#   level: "info"
+#   format: "text"
+#   log_domains: false

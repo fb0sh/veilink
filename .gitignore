@@ -1,0 +1,25 @@
+# Rust build artifacts
+/target
+**/*.rs.bk
+*.pdb
+
+# Local cargo home used in sandboxed development environments
+/.cargo-home
+
+# Runtime state: long-term identity keys, generated certificates
+/state
+*.key
+*.pem
+key.txt
+veilink.key
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Fuzzing
+/fuzz/target
+/fuzz/corpus
+/fuzz/artifacts

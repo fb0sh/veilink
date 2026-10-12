@@ -1,0 +1,29 @@
+[package]
+name = "veilink-cli"
+description = "Veilink command line interface: client, server, keygen and check"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "veilink"
+path = "src/main.rs"
+
+[dependencies]
+veilink-config = { workspace = true }
+veilink-crypto = { workspace = true }
+veilink-rules = { workspace = true }
+
+clap = { workspace = true, features = ["std", "help", "usage", "error-context", "derive", "wrap_help"] }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["std", "fmt", "env-filter", "json", "ansi"] }
+zeroize = { workspace = true, features = ["alloc"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+assert_cmd = "2.0"
+predicates = "3.1"
