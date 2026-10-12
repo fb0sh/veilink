@@ -24,7 +24,10 @@ use tracing::{debug, info, warn};
 
 use veilink_config::Transport as TransportKind;
 use veilink_crypto::Psk;
-use veilink_protocol::codec::{BucketedPadding, PaddingPolicy};
+use veilink_privacy::cover::{ActivityClock, CoverEngine, SessionCoverSink};
+use veilink_privacy::padding::BudgetedPadding;
+use veilink_privacy::scheduler::PrivacyScheduler;
+use veilink_protocol::codec::PaddingPolicy;
 use veilink_protocol::session::{start_session, Role, Session, SessionConfig};
 use veilink_protocol::stats::Stats;
 
@@ -183,6 +186,9 @@ impl UplinkConfig {
             session: SessionConfig {
                 max_streams: settings.limits.max_streams_per_session,
                 idle_timeout: Duration::from_millis(settings.limits.idle_timeout_ms.max(60_000)),
+                // Strict Privacy: batch outbound frames and pace them with jitter.
+                scheduler: Arc::new(PrivacyScheduler::strict()),
+                schedule_max_delay: Duration::from_millis(50),
                 ..SessionConfig::default()
             },
             reconnect_initial: Duration::from_millis(500),
@@ -454,11 +460,31 @@ pub async fn run_uplink<F>(
 
                 // Report the session's counters into the client statistics while it lives.
                 let reporter = tokio::spawn(session_reporter(session.clone(), stats.clone()));
+                // Strict Privacy: authenticated cover traffic while the session is idle.
+                let cover = {
+                    let engine = Arc::new(CoverEngine::new());
+                    let sink = Arc::new(SessionCoverSink::new(
+                        session.clone(),
+                        Arc::new(ActivityClock::default()),
+                    ));
+                    // The engine observes the same clock the sink maintains, so "idle" means the
+                    // same thing to both.
+                    let clock = sink.clock().clone();
+                    let session_watch = session.clone();
+                    tokio::spawn(async move {
+                        engine
+                            .run(sink, clock, async move {
+                                session_watch.wait_closed().await;
+                            })
+                            .await;
+                    })
+                };
 
                 loop {
                     if shutting_down.load(std::sync::atomic::Ordering::Relaxed) {
                         session.close("client shutting down").await;
                         reporter.abort();
+                        cover.abort();
                         info!("uplink shutting down");
                         return;
                     }
@@ -467,6 +493,7 @@ pub async fn run_uplink<F>(
                         .is_ok()
                     {
                         reporter.abort();
+                        cover.abort();
                         let reason = session
                             .close_reason()
                             .unwrap_or_else(|| "unknown".to_string());
@@ -561,6 +588,9 @@ impl From<&veilink_protocol::SessionStatsSnapshot> for SessionCounters {
 }
 
 /// The default padding policy used by the client.
+///
+/// Padding is bucketed and bounded by the shared resource budget, so a large transfer cannot spend
+/// unbounded bandwidth on padding.
 pub fn default_padding() -> Arc<dyn PaddingPolicy> {
-    Arc::new(BucketedPadding::new())
+    Arc::new(BudgetedPadding::with_default_budget())
 }

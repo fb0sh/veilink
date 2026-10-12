@@ -104,7 +104,13 @@ pub async fn serve(socket: TcpStream, ctx: Arc<ClientContext>) -> ConnectionOutc
         let mut head_sent = false;
         match handle_forward(&mut client, &head, &mut upstream, &ctx, &mut head_sent).await {
             Ok(ForwardOutcome::KeepAlive) => continue,
-            Ok(ForwardOutcome::Close) => return ConnectionOutcome::ClosedByPolicy,
+            Ok(ForwardOutcome::Close) => {
+                // Half-close before dropping the socket. Dropping a socket that still has unread
+                // data queued makes the kernel send an RST, which can truncate a response that ends
+                // at connection close; an explicit FIN lets the client read to the end.
+                let _ = client.shutdown_write().await;
+                return ConnectionOutcome::ClosedByPolicy;
+            }
             Ok(ForwardOutcome::Hijacked) => return ConnectionOutcome::ClosedByPolicy,
             Err(e) => {
                 debug!(error = %e, head_sent, "proxy error");
@@ -121,6 +127,7 @@ pub async fn serve(socket: TcpStream, ctx: Arc<ClientContext>) -> ConnectionOutc
                     )
                     .await;
                 }
+                let _ = client.shutdown_write().await;
                 return ConnectionOutcome::ProtocolError;
             }
         }

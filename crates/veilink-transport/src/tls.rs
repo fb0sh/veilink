@@ -252,12 +252,26 @@ impl ServerTlsIdentity {
 
 /// Builds the server's TLS configuration.
 pub fn server_config(identity: &ServerTlsIdentity) -> Result<Arc<ServerConfig>, TlsError> {
+    server_config_for(identity, None)
+}
+
+/// Builds the server's TLS configuration, optionally restricting ALPN to one protocol.
+///
+/// Restricting ALPN is what makes a client/server transport mismatch a clear handshake failure
+/// instead of two peers that negotiate a protocol neither of them is running.
+pub fn server_config_for(
+    identity: &ServerTlsIdentity,
+    alpn: Option<&[u8]>,
+) -> Result<Arc<ServerConfig>, TlsError> {
     install_crypto_provider()?;
     let mut config = ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(identity.cert_chain.clone(), identity.key.clone_key())
         .map_err(|e| TlsError::Identity(e.to_string()))?;
-    config.alpn_protocols = vec![ALPN_H2.to_vec(), ALPN_VLP.to_vec()];
+    config.alpn_protocols = match alpn {
+        Some(protocol) => vec![protocol.to_vec()],
+        None => vec![ALPN_H2.to_vec(), ALPN_VLP.to_vec()],
+    };
     Ok(Arc::new(config))
 }
 
@@ -266,6 +280,11 @@ pub fn server_config(identity: &ServerTlsIdentity) -> Result<Arc<ServerConfig>, 
 /// The certificate verifier accepts any well-formed certificate; see the module documentation for
 /// why that is not the same as disabling authentication.
 pub fn client_config() -> Result<Arc<ClientConfig>, TlsError> {
+    client_config_for(None)
+}
+
+/// Builds the client's TLS configuration, optionally restricting ALPN to one protocol.
+pub fn client_config_for(alpn: Option<&[u8]>) -> Result<Arc<ClientConfig>, TlsError> {
     install_crypto_provider()?;
     let provider = CryptoProvider::get_default()
         .cloned()
@@ -274,7 +293,10 @@ pub fn client_config() -> Result<Arc<ClientConfig>, TlsError> {
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(PskBoundVerifier::new(provider)))
         .with_no_client_auth();
-    config.alpn_protocols = vec![ALPN_H2.to_vec(), ALPN_VLP.to_vec()];
+    config.alpn_protocols = match alpn {
+        Some(protocol) => vec![protocol.to_vec()],
+        None => vec![ALPN_H2.to_vec(), ALPN_VLP.to_vec()],
+    };
     Ok(Arc::new(config))
 }
 
@@ -411,19 +433,34 @@ fn check_key_permissions(_path: &Path) -> Result<(), TlsError> {
 }
 
 /// Reports the negotiated ALPN protocol, rejecting anything unexpected.
-pub fn check_alpn(negotiated: Option<&[u8]>) -> Result<&'static [u8], TlsError> {
-    match negotiated {
-        None => {
-            // No ALPN is acceptable: some deployments terminate TLS in front of Veilink. The
-            // framing is unambiguous either way, so this is not a downgrade.
+///
+/// `required`, when given, is the protocol this side intends to run. A mismatch is a configuration
+/// error between the operator's client and server, and it must fail loudly rather than leave two
+/// peers running different framings over one connection.
+pub fn check_alpn(
+    negotiated: Option<&[u8]>,
+    required: Option<&[u8]>,
+) -> Result<&'static [u8], TlsError> {
+    match (negotiated, required) {
+        (Some(protocol), Some(wanted)) if protocol != wanted => {
+            Err(TlsError::UnexpectedAlpn(format!(
+                "{} (expected {})",
+                String::from_utf8_lossy(protocol),
+                String::from_utf8_lossy(wanted)
+            )))
+        }
+        (Some(protocol), _) if protocol == ALPN_H2 => Ok(ALPN_H2),
+        (Some(protocol), _) if protocol == ALPN_VLP => Ok(ALPN_VLP),
+        (Some(other), _) => Err(TlsError::UnexpectedAlpn(
+            String::from_utf8_lossy(other).to_string(),
+        )),
+        (None, Some(wanted)) => Ok(if wanted == ALPN_H2 { ALPN_H2 } else { ALPN_VLP }),
+        (None, None) => {
+            // No ALPN is acceptable when nothing specific was requested: some deployments
+            // terminate TLS in front of Veilink.
             debug!("the peer did not negotiate ALPN; assuming raw VLP framing");
             Ok(ALPN_VLP)
         }
-        Some(protocol) if protocol == ALPN_H2 => Ok(ALPN_H2),
-        Some(protocol) if protocol == ALPN_VLP => Ok(ALPN_VLP),
-        Some(other) => Err(TlsError::UnexpectedAlpn(
-            String::from_utf8_lossy(other).to_string(),
-        )),
     }
 }
 
@@ -502,14 +539,28 @@ mod tests {
         assert!(server.alpn_protocols.contains(&ALPN_H2.to_vec()));
         let client = client_config().unwrap();
         assert!(client.alpn_protocols.contains(&ALPN_VLP.to_vec()));
+
+        // A restricted configuration offers exactly one protocol.
+        let restricted = client_config_for(Some(ALPN_VLP)).unwrap();
+        assert_eq!(restricted.alpn_protocols, vec![ALPN_VLP.to_vec()]);
+        let restricted = server_config_for(&identity, Some(ALPN_H2)).unwrap();
+        assert_eq!(restricted.alpn_protocols, vec![ALPN_H2.to_vec()]);
     }
 
     #[test]
-    fn alpn_is_validated() {
-        assert_eq!(check_alpn(None).unwrap(), ALPN_VLP);
-        assert_eq!(check_alpn(Some(ALPN_VLP)).unwrap(), ALPN_VLP);
-        assert_eq!(check_alpn(Some(ALPN_H2)).unwrap(), ALPN_H2);
-        assert!(check_alpn(Some(b"http/1.1")).is_err());
+    fn alpn_is_validated_against_the_required_protocol() {
+        assert_eq!(check_alpn(None, None).unwrap(), ALPN_VLP);
+        assert_eq!(check_alpn(Some(ALPN_VLP), None).unwrap(), ALPN_VLP);
+        assert_eq!(check_alpn(Some(ALPN_H2), None).unwrap(), ALPN_H2);
+        assert!(check_alpn(Some(b"http/1.1"), None).is_err());
+        // A required protocol rejects anything else, including the equally valid other one.
+        assert!(check_alpn(Some(ALPN_H2), Some(ALPN_VLP)).is_err());
+        assert!(check_alpn(Some(ALPN_VLP), Some(ALPN_H2)).is_err());
+        assert_eq!(
+            check_alpn(Some(ALPN_VLP), Some(ALPN_VLP)).unwrap(),
+            ALPN_VLP
+        );
+        assert_eq!(check_alpn(Some(ALPN_H2), Some(ALPN_H2)).unwrap(), ALPN_H2);
     }
 
     #[test]

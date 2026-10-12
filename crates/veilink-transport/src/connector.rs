@@ -9,7 +9,7 @@ use tokio_rustls::{TlsAcceptor, TlsConnector};
 use tracing::debug;
 use veilink_crypto::kdf::EXPORTER_LABEL;
 
-use crate::tls::{check_alpn, client_config, server_config, ServerTlsIdentity, TlsError};
+use crate::tls::{check_alpn, server_config, ServerTlsIdentity, TlsError};
 
 /// A TLS-protected connection plus the values the protocol needs from it.
 pub struct SecureConnection {
@@ -98,13 +98,13 @@ impl ExporterSource for rustls::ServerConnection {
     }
 }
 
-/// Connects to `addr` and completes a TLS 1.3 handshake.
+/// Connects to `addr` and completes a TLS 1.3 handshake for the raw `VLP/1` framing.
 pub async fn connect(
     addr: SocketAddr,
     server_name: &str,
     timeout: Duration,
 ) -> Result<SecureConnection, TlsError> {
-    let config = client_config()?;
+    let config = crate::tls::client_config_for(Some(crate::tls::ALPN_VLP))?;
     connect_with(addr, server_name, config, timeout).await
 }
 
@@ -114,6 +114,22 @@ pub async fn connect_with(
     server_name: &str,
     config: Arc<rustls::ClientConfig>,
     timeout: Duration,
+) -> Result<SecureConnection, TlsError> {
+    let required = config
+        .alpn_protocols
+        .first()
+        .cloned()
+        .unwrap_or_else(|| crate::tls::ALPN_VLP.to_vec());
+    connect_expecting(addr, server_name, config, timeout, Some(&required)).await
+}
+
+/// Connects and requires `required` to be the negotiated ALPN protocol.
+pub async fn connect_expecting(
+    addr: SocketAddr,
+    server_name: &str,
+    config: Arc<rustls::ClientConfig>,
+    timeout: Duration,
+    required: Option<&[u8]>,
 ) -> Result<SecureConnection, TlsError> {
     let socket = tokio::time::timeout(timeout, TcpStream::connect(addr))
         .await
@@ -136,7 +152,7 @@ pub async fn connect_with(
 
     let (_, connection) = stream.get_ref();
     let alpn = connection.alpn_protocol().map(|p| p.to_vec());
-    check_alpn(alpn.as_deref())?;
+    check_alpn(alpn.as_deref(), required)?;
     let exporter = export(connection)?;
     debug!(alpn = ?alpn, "TLS handshake complete (client)");
     Ok(SecureConnection {
@@ -146,11 +162,21 @@ pub async fn connect_with(
     })
 }
 
-/// Accepts a TLS connection on an already-accepted TCP socket.
+/// Accepts a TLS connection intended for the raw `VLP/1` framing.
 pub async fn accept(
     socket: TcpStream,
     acceptor: &TlsAcceptor,
     timeout: Duration,
+) -> Result<AcceptedConnection, TlsError> {
+    accept_expecting(socket, acceptor, timeout, crate::tls::ALPN_VLP).await
+}
+
+/// Accepts a TLS connection and requires `required` to be the negotiated ALPN protocol.
+pub async fn accept_expecting(
+    socket: TcpStream,
+    acceptor: &TlsAcceptor,
+    timeout: Duration,
+    required: &[u8],
 ) -> Result<AcceptedConnection, TlsError> {
     socket.set_nodelay(true).ok();
     let stream = tokio::time::timeout(timeout, acceptor.accept(socket))
@@ -160,7 +186,7 @@ pub async fn accept(
 
     let (_, connection) = stream.get_ref();
     let alpn = connection.alpn_protocol().map(|p| p.to_vec());
-    check_alpn(alpn.as_deref())?;
+    check_alpn(alpn.as_deref(), Some(required))?;
     let exporter = export(connection)?;
     Ok(AcceptedConnection {
         stream,
@@ -169,9 +195,17 @@ pub async fn accept(
     })
 }
 
-/// Builds the server's TLS acceptor.
+/// Builds the server's TLS acceptor for the raw `VLP/1` framing.
 pub fn acceptor(identity: &ServerTlsIdentity) -> Result<TlsAcceptor, TlsError> {
     Ok(TlsAcceptor::from(server_config(identity)?))
+}
+
+/// Builds a TLS acceptor restricted to a single ALPN protocol.
+pub fn acceptor_for(identity: &ServerTlsIdentity, alpn: &[u8]) -> Result<TlsAcceptor, TlsError> {
+    Ok(TlsAcceptor::from(crate::tls::server_config_for(
+        identity,
+        Some(alpn),
+    )?))
 }
 
 #[cfg(test)]
@@ -247,11 +281,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn alpn_negotiates_h2_first() {
+    async fn the_raw_transport_negotiates_the_vlp_protocol() {
+        // `connect` and the matching acceptor are the raw VLP/1 framing, so ALPN must be `vlp/1`
+        // and not the HTTP/2 protocol, even though both peers are capable of it.
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let identity = ServerTlsIdentity::generate(&["localhost".to_string()]).unwrap();
-        let acceptor = acceptor(&identity).unwrap();
+        let acceptor = acceptor_for(&identity, crate::tls::ALPN_VLP).unwrap();
         let server = tokio::spawn(async move {
             let (socket, _) = listener.accept().await.unwrap();
             accept(socket, &acceptor, Duration::from_secs(5))
@@ -261,9 +297,26 @@ mod tests {
         let client = connect(addr, "localhost", Duration::from_secs(5))
             .await
             .unwrap();
-        assert_eq!(client.alpn.as_deref(), Some(crate::tls::ALPN_H2));
+        assert_eq!(client.alpn.as_deref(), Some(crate::tls::ALPN_VLP));
         let accepted = server.await.unwrap();
         assert_eq!(accepted.alpn, client.alpn);
+    }
+
+    #[tokio::test]
+    async fn a_transport_mismatch_fails_the_handshake() {
+        // A client configured for the raw framing must not be served by a server offering only
+        // HTTP/2: silently negotiating one protocol while running another framing would be a bug.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let identity = ServerTlsIdentity::generate(&["localhost".to_string()]).unwrap();
+        let acceptor = acceptor_for(&identity, crate::tls::ALPN_H2).unwrap();
+        let server = tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            accept(socket, &acceptor, Duration::from_secs(5)).await
+        });
+        let outcome = connect(addr, "localhost", Duration::from_secs(5)).await;
+        assert!(outcome.is_err(), "an ALPN mismatch was accepted");
+        let _ = server.await;
     }
 
     #[tokio::test]

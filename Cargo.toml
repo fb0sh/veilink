@@ -9,6 +9,7 @@ members = [
     "crates/veilink-client",
     "crates/veilink-server",
     "crates/veilink-transport",
+    "crates/veilink-privacy",
     "tests",
     "benches",
 ]

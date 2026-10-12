@@ -1919,6 +1919,7 @@ dependencies = [
  "tracing",
  "veilink-config",
  "veilink-crypto",
+ "veilink-privacy",
  "veilink-protocol",
  "veilink-rules",
  "veilink-transport",
@@ -1957,6 +1958,18 @@ dependencies = [
  "tracing",
  "x25519-dalek",
  "zeroize",
+]
+
+[[package]]
+name = "veilink-privacy"
+version = "0.1.0"
+dependencies = [
+ "arc-swap",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "veilink-crypto",
+ "veilink-protocol",
 ]
 
 [[package]]
@@ -2000,6 +2013,7 @@ dependencies = [
  "tracing",
  "veilink-config",
  "veilink-crypto",
+ "veilink-privacy",
  "veilink-protocol",
  "veilink-rules",
  "veilink-transport",

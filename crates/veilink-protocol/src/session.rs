@@ -47,6 +47,7 @@ use crate::frame::{
     MAX_PAYLOAD,
 };
 use crate::message::{Message, OpenStatus};
+use crate::scheduler::{BatchContext, ImmediateScheduler, SendScheduler};
 
 /// Largest payload carried in a single `STREAM_DATA` frame.
 pub const MAX_STREAM_DATA: usize = 16 * 1024;
@@ -101,8 +102,12 @@ pub struct SessionConfig {
     pub key_wait_timeout: Duration,
     /// How long an idle session may stay open without any frame.
     pub idle_timeout: Duration,
+    /// Hard upper bound on any scheduling delay, so a pacing policy cannot stall a stream.
+    pub schedule_max_delay: Duration,
     /// Target size of the local one-time key pool.
     pub key_pool_size: usize,
+    /// How outbound frames are grouped and paced.
+    pub scheduler: Arc<dyn SendScheduler>,
 }
 
 impl Default for SessionConfig {
@@ -115,7 +120,9 @@ impl Default for SessionConfig {
             handshake_timeout: Duration::from_secs(10),
             key_wait_timeout: Duration::from_secs(10),
             idle_timeout: Duration::from_secs(300),
+            schedule_max_delay: Duration::from_millis(50),
             key_pool_size: veilink_crypto::DEFAULT_POOL_SIZE,
+            scheduler: Arc::new(ImmediateScheduler),
         }
     }
 }
@@ -924,20 +931,79 @@ async fn writer_task<W>(
 ) where
     W: AsyncWrite + Unpin,
 {
-    while let Some(item) = receiver.recv().await {
-        match item {
-            Outbound::Shutdown => break,
-            Outbound::Message(message) => {
-                if let Err(error) = write_one(&inner, &mut writer, &message).await {
-                    warn!(error = %error, "session writer stopped");
-                    inner.close(error.to_string());
-                    break;
+    let scheduler = inner.config.scheduler.clone();
+    let mut batch: Vec<Message> = Vec::new();
+    let mut batch_bytes = 0usize;
+    let mut oldest_wait = Duration::ZERO;
+
+    loop {
+        if batch.is_empty() {
+            // Park until there is something to send.
+            match receiver.recv().await {
+                None | Some(Outbound::Shutdown) => break,
+                Some(Outbound::Message(message)) => {
+                    batch_bytes = message_plaintext_len(&message);
+                    oldest_wait = Duration::ZERO;
+                    batch.push(message);
                 }
-                inner.wake_capacity();
             }
         }
+
+        // Coalesce whatever is already queued, within the policy's bounds.
+        let max_batch = scheduler.max_batch().max(1);
+        let max_bytes = scheduler.max_batch_bytes().max(MAX_PAYLOAD);
+        while batch.len() < max_batch && batch_bytes < max_bytes {
+            match receiver.try_recv() {
+                Ok(Outbound::Message(message)) => {
+                    batch_bytes += message_plaintext_len(&message);
+                    batch.push(message);
+                }
+                Ok(Outbound::Shutdown) => break,
+                Err(_) => break,
+            }
+        }
+
+        // Pace the batch. The wait is always bounded by the policy's own maximum, and a message
+        // that has waited too long is sent immediately so that no traffic can be starved.
+        let queued_behind = receiver.len();
+        let context = BatchContext {
+            batch_len: batch.len(),
+            batch_bytes,
+            oldest_wait,
+            queued_behind,
+        };
+        let delay = scheduler
+            .delay(&context)
+            .min(inner.config.schedule_max_delay);
+        if !delay.is_zero() && queued_behind == 0 {
+            tokio::time::sleep(delay).await;
+            oldest_wait += delay;
+        }
+
+        let batch_len = batch.len();
+        for message in batch.drain(..) {
+            if let Err(error) = write_one(&inner, &mut writer, &message).await {
+                warn!(error = %error, "session writer stopped");
+                inner.close(error.to_string());
+                let _ = AsyncWriteExt::shutdown(&mut writer).await;
+                return;
+            }
+        }
+        trace!(batch_len, batch_bytes, "batch written");
+        batch_bytes = 0;
+        oldest_wait = Duration::ZERO;
+        inner.wake_capacity();
     }
     let _ = AsyncWriteExt::shutdown(&mut writer).await;
+}
+
+/// Approximate plaintext size of a message, for batch accounting.
+fn message_plaintext_len(message: &Message) -> usize {
+    match message {
+        Message::StreamData { data, .. } => data.len() + 9,
+        Message::Cover { payload } => payload.len() + 5,
+        _ => 32,
+    }
 }
 
 /// Seals and transmits one message, waiting for one-time keys if the peer has not published any.

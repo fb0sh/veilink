@@ -17,6 +17,7 @@ pub mod codec;
 pub mod duplex;
 pub mod frame;
 pub mod message;
+pub mod scheduler;
 pub mod session;
 pub mod stats;
 
@@ -29,6 +30,7 @@ pub use frame::{
 pub use message::{
     Message, MessageError, MessageType, OpenStatus, StreamKind, MAX_HOST_LEN, MAX_TEXT_LEN,
 };
+pub use scheduler::{BatchContext, ImmediateScheduler, SendScheduler};
 pub use session::{
     start_session, IncomingStream, Role, Session, SessionConfig, SessionError, SessionStats,
     SessionStatsSnapshot, VlpStream, DEFAULT_WINDOW, MAX_STREAM_DATA, MIN_WINDOW,

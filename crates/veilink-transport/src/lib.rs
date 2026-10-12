@@ -23,9 +23,10 @@ pub mod http2;
 pub mod tls;
 
 pub use connector::{
-    accept, acceptor, connect, connect_with, AcceptedConnection, ExporterSource, SecureConnection,
+    accept, accept_expecting, acceptor, acceptor_for, connect, connect_expecting, connect_with,
+    AcceptedConnection, ExporterSource, SecureConnection,
 };
 pub use tls::{
-    check_alpn, client_config, install_crypto_provider, server_config, PskBoundVerifier,
-    ServerTlsIdentity, TlsError, ALPN_H2, ALPN_VLP,
+    check_alpn, client_config, client_config_for, install_crypto_provider, server_config,
+    server_config_for, PskBoundVerifier, ServerTlsIdentity, TlsError, ALPN_H2, ALPN_VLP,
 };

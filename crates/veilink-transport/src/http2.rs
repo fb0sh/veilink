@@ -24,7 +24,7 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::TcpStream;
 use tracing::debug;
 
-use crate::connector::{accept as tls_accept, connect_with};
+use crate::connector::{accept_expecting, connect_expecting};
 use crate::tls::{TlsError, ALPN_H2};
 
 /// Size of each HTTP/2 DATA frame written by the tunnel.
@@ -209,8 +209,8 @@ pub async fn connect(
     server_name: &str,
     timeout: Duration,
 ) -> Result<H2Tunnel<tokio::task::JoinHandle<()>>, TlsError> {
-    let config = crate::tls::client_config()?;
-    let secure = connect_with(addr, server_name, config, timeout).await?;
+    let config = crate::tls::client_config_for(Some(ALPN_H2))?;
+    let secure = connect_expecting(addr, server_name, config, timeout, Some(ALPN_H2)).await?;
     if secure.alpn.as_deref() != Some(ALPN_H2) {
         return Err(TlsError::UnexpectedAlpn(
             secure
@@ -272,7 +272,7 @@ pub async fn accept(
     acceptor: &tokio_rustls::TlsAcceptor,
     timeout: Duration,
 ) -> Result<H2Tunnel<tokio::task::JoinHandle<()>>, TlsError> {
-    let secure = tls_accept(socket, acceptor, timeout).await?;
+    let secure = accept_expecting(socket, acceptor, timeout, ALPN_H2).await?;
     if secure.alpn.as_deref() != Some(ALPN_H2) {
         return Err(TlsError::UnexpectedAlpn(
             secure
@@ -460,7 +460,7 @@ mod tests {
         });
 
         let config = crate::tls::client_config().unwrap();
-        let secure = connect_with(addr, "localhost", config, Duration::from_secs(5))
+        let secure = crate::connect_with(addr, "localhost", config, Duration::from_secs(5))
             .await
             .unwrap();
         let (mut send_request, connection) = h2::client::handshake(secure.stream).await.unwrap();

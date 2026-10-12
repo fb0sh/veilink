@@ -1,0 +1,21 @@
+[package]
+name = "veilink-privacy"
+description = "Strict Privacy: padding, traffic scheduling, cover traffic and resource budgets"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+veilink-protocol = { workspace = true }
+veilink-crypto = { workspace = true }
+
+tokio = { workspace = true, features = ["rt", "time", "sync", "macros"] }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+arc-swap = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "time", "macros"] }

@@ -199,7 +199,16 @@ async fn a_wrong_key_is_rejected_and_the_request_fails_closed() {
         0,
         "the origin was contacted despite the whitelist"
     );
-    assert!(server.context.stats.snapshot().auth_failures >= 1);
+    // The proxy answers 502 as soon as it knows no tunnel is available, which can be before the
+    // server has finished rejecting the handshake, so wait for the server's own view.
+    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    while server.context.stats.snapshot().auth_failures == 0 {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the server never recorded an authentication failure"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
     assert!(client.context.stats.snapshot().session_failures >= 1);
 
     client.stop().await;

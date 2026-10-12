@@ -99,8 +99,11 @@ u16 real length (big endian) | message bytes | padding
 ```
 
 - 明文总长度由填充策略取整到"桶"（bucket），而不是等于消息长度。
-- 默认桶集合：`512, 1024, 2048, 4096, 8192` 字节；超过 8192 后按 8192 的整数倍向上取整，上限
-  `MAX_PAYLOAD = 65536`。
+- 协议层默认桶集合（`BucketedPadding`）：`512, 1024, 2048, 4096, 8192` 字节；超过 8192 后按 8192
+  的整数倍向上取整，上限 `MAX_PAYLOAD = 65536`。
+- 运行时的策略是 `veilink-privacy` 的 `BudgetedPadding`：它先取标准桶，再把填充开销提交给资源预算。
+  预算饱和时会**降级到最小桶**（`min(512, MAX_PAYLOAD)` 与 `message_len + 2` 的较大者），而不会
+  停止填充。因此线上明文长度仍是一个桶值，只是可能不是"最近的"那个桶。
 - 填充字节来自操作系统 CSPRNG；仅当 CSPRNG 失败时退化为 0 填充（此时长度不变，只削弱该帧的
   长度隐藏效果）。
 - 接收方**不信任**长度前缀：`declared + 2 > padded.len()` 时为协议错误
@@ -507,15 +510,18 @@ receiver                                   sender
 
 ## 11. 未实现 / 当前限制
 
-以下内容**当前未实现**，文档中不得当作已实现的能力：
+以下内容**未实现**或**实现但不生效**，文档中不得当作已实现的能力：
 
-- **没有自动 cover traffic 调度器**。`Session::send_cover`、`Message::Cover`（`0x32`）、
-  `PaddingPolicy::cover_len` 与 `cover_*` 计数器都已实现，但代码库中除测试与基准之外没有调用者；
-  没有任何定时器或策略会主动发送 cover 帧。
+- **发送节奏整形当前不生效**。`SendScheduler` 抽象（`protocol/scheduler.rs`）与
+  `PrivacyScheduler`（`veilink-privacy`）都已实现并被两端安装；**批量合并**
+  （`max_batch` / `max_batch_bytes`）确实生效，但 `delay()` 不会被应用：`writer_task` 只在
+  `!delay.is_zero() && queued_behind == 0` 时睡眠，而 `PrivacyScheduler` 只在
+  `queued_behind > 0` 时返回非零延迟，两者互斥。结果是帧之间没有加入人为间隔。
 - **没有应用层 keepalive 循环**。`Session::ping()` 与 `PING`/`PONG` 已实现，但生产路径不周期性
   调用；空闲会话由 `idle_timeout`（默认 300 秒，运行时下限 60 秒）关闭。
-- **没有独立的流量整形/调度器**。`veilink-config` 的模块注释提到 "traffic scheduling"，但代码中
-  不存在对应模块或定时器；当前唯一的流量整形手段是固定桶填充（始终生效）。
+- **cover traffic 的调度是"空闲突发后停止"，不是恒定速率**。`CoverEngine` 默认在会话空闲
+  750 ms 后开始，每 1.5 秒一个突发、每突发最多 3 帧（64–4096 随机字节），最多 40 个突发后停止，
+  并受 4 KiB/s 与每会话 256 MiB 的预算约束（详见 `docs/privacy.md`）。
 - **没有流优先级、权重或抢占**。
 - **`ERROR`（`0x7f`）从不发送**。
 - **`SequenceMode::Exact` 未被会话编解码器使用**（控制帧不做序号检查，见第 5 节）。

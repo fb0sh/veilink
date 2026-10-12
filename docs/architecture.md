@@ -10,13 +10,13 @@
 ```text
                          veilink-cli (二进制 `veilink`)
                                     │
-              ┌──────────────┬──────┴───────┬────────────────┐
-              │              │              │                │
-     veilink-client   veilink-server  veilink-config   veilink-crypto
-              │              │              │                │
-              │              │              └──────┬─────────┘
-              │              │                     │
-     veilink-protocol ───────┴──────────────► veilink-rules
+              ┌──────────────┬──────┴───────┬────────────────┬───────────────┐
+              │              │              │                │               │
+     veilink-client   veilink-server  veilink-config   veilink-crypto  veilink-privacy
+              │              │              │                │               │
+              │              │              └──────┬─────────┘               │
+              │              │                     │                         │
+     veilink-protocol ───────┴──────────────► veilink-rules ◄────────────────┘
               │
      veilink-crypto
 ```
@@ -28,12 +28,13 @@
 | `veilink-crypto` | 原语封装、PSK、握手、密钥调度、一次性密钥池、长期身份、RNG | 仅第三方密码库 |
 | `veilink-rules` | 白名单规则解析与匹配、域名规范化、IP/CIDR、通配符 | 无内部依赖 |
 | `veilink-config` | `client.yaml` / `server.yaml` 的加载与两阶段校验 | `veilink-crypto`、`veilink-rules` |
-| `veilink-protocol` | VLP/1：帧、消息、会话编解码、多路复用、流控、`duplex` 管道、统计计数器 | `veilink-crypto` |
+| `veilink-protocol` | VLP/1：帧、消息、会话编解码、多路复用、流控、`duplex` 管道、`SendScheduler` 抽象、统计计数器 | `veilink-crypto` |
+| `veilink-privacy` | Strict Privacy 层：填充预算、发送调度策略、cover traffic 引擎、资源预算 | `veilink-crypto`、`veilink-protocol` |
 | `veilink-transport` | TLS 1.3 配置与自签名身份、exporter、连接器、HTTP/2 承载 | `veilink-config`、`veilink-crypto`、`veilink-protocol` |
 | `veilink-client` | 本地 HTTP 代理监听、路由决策、DIRECT/PROXY、uplink 与会话监管 | 上述全部 |
 | `veilink-server` | 认证中继、远端 DNS、egress 策略、流中继 | 上述全部 |
 | `veilink-cli` | `veilink client/server/keygen/check` 四个子命令、日志、配置热重载 | `veilink-config`、`veilink-crypto`、`veilink-rules`（并通过 client/server 间接使用其余） |
-| `veilink-tests`（`tests/`） | 集成测试与共享 testkit（真实 TCP/TLS 源站、curl 驱动） | client、server、config、protocol、crypto |
+| `veilink-tests`（`tests/`） | 集成测试与共享 testkit（真实 TCP/TLS 源站、DNS stub、curl 驱动） | client、server、config、protocol、crypto |
 | `veilink-benches`（`benches/`） | Criterion 基准：原语、完整帧、隐私机制开销 | `veilink-crypto`、`veilink-protocol` |
 
 ### 1.1 各 crate 内部模块
@@ -59,9 +60,19 @@
 | `frame` | 76 字节认证头、帧读写、长度边界 |
 | `message` | 位置化的消息编码与解码 |
 | `codec` | 会话编解码：填充策略、控制链、一次性密钥池 |
-| `session` | 多路复用、流状态机、流控、读写任务 |
+| `session` | 多路复用、流状态机、流控、按批写出的读写任务 |
+| `scheduler` | `SendScheduler` / `BatchContext` 抽象与 `ImmediateScheduler` 默认实现 |
 | `duplex` | 带缓冲的双向流、头部读取、字节记账转发、全双工 splice |
 | `stats` | 客户端与服务端共用的原子计数器 |
+
+**`veilink-privacy`**（Strict Privacy 层）
+
+| 模块 | 职责 |
+|------|------|
+| `padding` | `BudgetedPadding`：在桶策略之上加入资源预算，饱和时降级而不关闭填充 |
+| `scheduler` | `PrivacyScheduler`：合并与节奏策略（`SchedulerConfig`，内部常量） |
+| `cover` | `CoverEngine` / `ActivityClock` / `SessionCoverSink`：空闲期 cover traffic |
+| `budget` | `Budget` / `BudgetTracker`：cover 速率与生命周期额度、填充速率额度（独立窗口） |
 
 **`veilink-client`**：`http`（HTTP/1.1 解析与改写）、`routing`（authority 解析与 DIRECT/PROXY
 选择）、`tunnel`（`Tunnel` 抽象与 fail-closed 路由）、`proxy`（每连接请求循环）、`runtime`
@@ -206,8 +217,9 @@ Browser/curl
 
 `veilink-protocol` 的 `Session` 由三部分组成：
 
-- 一个**写任务**：拥有发送半连接，从有界队列取出消息、密封并写线。密封放在写任务里（而不是调用
-  方）是为了让帧序号顺序与上线顺序一致，接收方的重放检查依赖这一点。
+- 一个**写任务**：拥有发送半连接，从有界队列取出消息、按 `SendScheduler` 的批量上限把队列中已有的
+  消息合并成一批、密封并写线。密封放在写任务里（而不是调用方）是为了让帧序号顺序与上线顺序一致，
+  接收方的重放检查依赖这一点。
 - 一个**读任务**：拥有接收半连接，认证每帧、派发消息、按需补发一次性密钥，空闲超过 `idle_timeout`
   时关闭会话。
 - 共享状态 `SessionInner`：编解码器（`Mutex<SessionCodec>`）、流表、开流等待者、ping 等待者、
@@ -215,6 +227,12 @@ Browser/curl
 
 出站消息通过 `mpsc` 有界队列（默认 512）交付；队列满时 `poll_write` 让出（`Poll::Pending`），
 因此慢读者只会反压，不会造成无界缓冲。
+
+在两端的运行时之上还各有一个**隐私任务**：客户端 `run_uplink` 与
+服务端 `serve_connection` 都会为一个已建立的会话启动 `CoverEngine`，它通过
+`SessionCoverSink` 以会话的帧计数判断空闲，并在预算允许时调用 `Session::send_cover`。
+该任务在会话关闭时被 abort。批量合并与填充策略则直接安装在 `SessionConfig` 与
+`SessionContext::padding` 上。详见 [`docs/privacy.md`](privacy.md)。
 
 ---
 

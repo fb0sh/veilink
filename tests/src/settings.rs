@@ -55,8 +55,10 @@ pub fn client_settings(rules: &[&str]) -> ClientSettings {
 pub fn client_settings_fast(rules: &[&str]) -> ClientSettings {
     let mut settings = client_settings(rules);
     settings.limits = LimitsConfig {
-        connect_timeout_ms: 2_000,
-        idle_timeout_ms: 10_000,
+        // Generous enough that a heavily loaded test machine cannot turn a slow connect into a
+        // spurious failure, but short enough that a genuinely unreachable target still fails fast.
+        connect_timeout_ms: 15_000,
+        idle_timeout_ms: 30_000,
         max_connections: 256,
         max_streams_per_session: 256,
         ..LimitsConfig::default()

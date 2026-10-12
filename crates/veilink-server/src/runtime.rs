@@ -22,7 +22,10 @@ use tracing::{debug, info, warn};
 
 use veilink_config::{ServerSettings, Transport as TransportKind};
 use veilink_crypto::{Identity, Psk};
-use veilink_protocol::codec::{BucketedPadding, PaddingPolicy};
+use veilink_privacy::cover::{ActivityClock, CoverEngine, SessionCoverSink};
+use veilink_privacy::padding::BudgetedPadding;
+use veilink_privacy::scheduler::PrivacyScheduler;
+use veilink_protocol::codec::PaddingPolicy;
 use veilink_protocol::session::{start_session, IncomingStream, Role, Session, SessionConfig};
 use veilink_protocol::stats::Stats;
 use veilink_protocol::OpenStatus;
@@ -82,9 +85,13 @@ impl ServerContext {
             session: SessionConfig {
                 max_streams: settings.limits.max_streams_per_session,
                 idle_timeout: Duration::from_millis(settings.limits.idle_timeout_ms.max(60_000)),
+                // Both directions of a session use the same pacing and padding policy, so the size
+                // and timing distribution is symmetric.
+                scheduler: Arc::new(PrivacyScheduler::strict()),
+                schedule_max_delay: Duration::from_millis(50),
                 ..SessionConfig::default()
             },
-            padding: Arc::new(BucketedPadding::new()),
+            padding: Arc::new(BudgetedPadding::with_default_budget()),
             limits: settings.limits.clone(),
             log_domains: settings.log.log_domains,
             stats: Stats::new(),
@@ -190,7 +197,13 @@ impl ServerRuntime {
                 "generated a new TLS identity"
             );
         }
-        let acceptor = veilink_transport::acceptor(&tls_identity)?;
+        // Restrict ALPN to the configured transport, so a client configured for the other framing
+        // fails the handshake instead of silently running a different protocol.
+        let alpn = match settings.transport {
+            TransportKind::Tls => veilink_transport::ALPN_VLP,
+            TransportKind::H2 => veilink_transport::ALPN_H2,
+        };
+        let acceptor = veilink_transport::acceptor_for(&tls_identity, alpn)?;
         let listener =
             TcpListener::bind(settings.listen)
                 .await
@@ -373,7 +386,27 @@ async fn serve_connection(
     };
 
     debug!(%peer, session = format!("{:#x}", session.session_id()), "authenticated session");
+
+    // Strict Privacy: cover traffic while the session is idle, bounded by the cover budget.
+    let cover = {
+        let engine = Arc::new(CoverEngine::new());
+        let sink = Arc::new(SessionCoverSink::new(
+            session.clone(),
+            Arc::new(ActivityClock::default()),
+        ));
+        let clock = sink.clock().clone();
+        let watch = session.clone();
+        tokio::spawn(async move {
+            engine
+                .run(sink, clock, async move {
+                    watch.wait_closed().await;
+                })
+                .await;
+        })
+    };
+
     relay_streams(session, ctx, shutdown).await;
+    cover.abort();
     Ok(())
 }
 
