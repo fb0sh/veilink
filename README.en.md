@@ -290,7 +290,7 @@ the pipe → answer `HTTP/1.1 200 Connection Established` → raw byte splice. S
 ## Building
 
 ```bash
-git clone https://github.com/veilink/veilink.git
+git clone https://github.com/fb0sh/veilink.git
 cd veilink
 
 # Release build (output: target/release/veilink)
@@ -625,7 +625,7 @@ git config --global --unset http.proxy
 git config --global --unset https.proxy
 
 # Test
-GIT_CURL_VERBOSE=1 git ls-remote https://github.com/veilink/veilink.git | head
+GIT_CURL_VERBOSE=1 git ls-remote https://github.com/fb0sh/veilink.git | head
 ```
 
 Make sure `whitelist` covers `github.com` and `githubusercontent.com`
@@ -635,7 +635,7 @@ Make sure `whitelist` covers `github.com` and `githubusercontent.com`
 
 1. switch to an HTTPS remote (recommended; it is covered by the whitelist and the proxy):
    ```bash
-   git remote set-url origin https://github.com/veilink/veilink.git
+   git remote set-url origin https://github.com/fb0sh/veilink.git
    ```
 2. route SSH through CONNECT (requires a `netcat` that supports `-X connect`), in `~/.ssh/config`:
    ```

@@ -2,13 +2,11 @@ name: Release
 
 # Triggered by a `v*` tag, or manually from the Actions tab.
 #
-# Builds the five supported targets and publishes one archive per platform:
+# Builds the three supported targets and publishes one archive per platform:
 #
 #   veilink-linux-x86_64.tar.gz
-#   veilink-linux-aarch64.tar.gz
-#   veilink-windows-x86_64.zip
-#   veilink-macos-x86_64.tar.gz
 #   veilink-macos-aarch64.tar.gz
+#   veilink-windows-x86_64.zip
 #
 # Each archive contains the `veilink` binary, `README.md`, `LICENSE` and the `examples/`
 # directory. A `SHA256SUMS` file covering every archive is published alongside them.
@@ -37,24 +35,14 @@ jobs:
             os: ubuntu-latest
             archive: veilink-linux-x86_64.tar.gz
             package: tar
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
-            archive: veilink-linux-aarch64.tar.gz
-            package: tar
-            apt: gcc-aarch64-linux-gnu
-            linker: aarch64-linux-gnu-gcc
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            archive: veilink-windows-x86_64.zip
-            package: zip
-          - target: x86_64-apple-darwin
-            os: macos-latest
-            archive: veilink-macos-x86_64.tar.gz
-            package: tar
           - target: aarch64-apple-darwin
             os: macos-latest
             archive: veilink-macos-aarch64.tar.gz
             package: tar
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: veilink-windows-x86_64.zip
+            package: zip
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -65,18 +53,7 @@ jobs:
           shared-key: release-${{ matrix.target }}
           key: ${{ matrix.target }}
 
-      - name: Install cross toolchain
-        if: matrix.apt != ''
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ${{ matrix.apt }}
-
-      - name: Configure cross linker
-        if: matrix.linker != ''
-        run: |
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=${{ matrix.linker }}" >> "$GITHUB_ENV"
-          echo "CC_aarch64_unknown_linux_gnu=${{ matrix.linker }}" >> "$GITHUB_ENV"
-
+      # Every target has a native runner, so the build needs no cross toolchain.
       - name: Build
         run: cargo build --release --locked --target ${{ matrix.target }} -p veilink-cli
 

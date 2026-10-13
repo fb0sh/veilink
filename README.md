@@ -250,7 +250,7 @@ curl -x http://127.0.0.1:7890 -I https://github.com/
 ## 编译方式
 
 ```bash
-git clone https://github.com/veilink/veilink.git
+git clone https://github.com/fb0sh/veilink.git
 cd veilink
 
 # 发布构建（产物：target/release/veilink）
@@ -574,7 +574,7 @@ git config --global --unset http.proxy
 git config --global --unset https.proxy
 
 # 测试
-GIT_CURL_VERBOSE=1 git ls-remote https://github.com/veilink/veilink.git | head
+GIT_CURL_VERBOSE=1 git ls-remote https://github.com/fb0sh/veilink.git | head
 ```
 
 请确认 `whitelist` 覆盖 `github.com` 与 `githubusercontent.com`
@@ -584,7 +584,7 @@ GIT_CURL_VERBOSE=1 git ls-remote https://github.com/veilink/veilink.git | head
 
 1. 改用 HTTPS 远端（推荐；同时受白名单与代理覆盖）：
    ```bash
-   git remote set-url origin https://github.com/veilink/veilink.git
+   git remote set-url origin https://github.com/fb0sh/veilink.git
    ```
 2. 让 SSH 走 CONNECT（需要 `netcat` 支持 `-X connect`），在 `~/.ssh/config` 中：
    ```

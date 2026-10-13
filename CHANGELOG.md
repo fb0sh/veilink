@@ -207,5 +207,5 @@ forward-secret protocol, and a strict-privacy layer.
   quantum cryptanalysis. Veilink makes **no** claim of zero detection rate, absolute anonymity or
   untraceability.
 
-[Unreleased]: https://github.com/veilink/veilink/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/veilink/veilink/releases/tag/v0.1.0
+[Unreleased]: https://github.com/fb0sh/veilink/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/fb0sh/veilink/releases/tag/v0.1.0

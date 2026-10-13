@@ -21,8 +21,8 @@ edition = "2021"
 rust-version = "1.83"
 license = "MIT"
 authors = ["The Veilink Contributors"]
-repository = "https://github.com/veilink/veilink"
-homepage = "https://github.com/veilink/veilink"
+repository = "https://github.com/fb0sh/veilink"
+homepage = "https://github.com/fb0sh/veilink"
 keywords = ["proxy", "privacy", "cryptography", "http", "vpn"]
 categories = ["network-programming", "cryptography"]
 

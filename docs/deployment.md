@@ -27,8 +27,8 @@
 
 ### 2.1 获取二进制
 
-从 GitHub Release 下载对应平台的归档（`veilink-linux-x86_64.tar.gz` 或
-`veilink-linux-aarch64.tar.gz`），或从源码编译：
+从 GitHub Release 下载对应平台的归档（`veilink-linux-x86_64.tar.gz`、
+`veilink-macos-aarch64.tar.gz` 或 `veilink-windows-x86_64.zip`），或从源码编译：
 
 ```bash
 cd /path/to/Veilink
@@ -177,7 +177,7 @@ error: cannot start the server
 ```ini
 [Unit]
 Description=Veilink encrypted proxy server
-Documentation=https://github.com/veilink/veilink
+Documentation=https://github.com/fb0sh/veilink
 After=network-online.target
 Wants=network-online.target
 
