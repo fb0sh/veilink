@@ -18,11 +18,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use hickory_resolver::config::{
-    LookupIpStrategy, NameServerConfig, NameServerConfigGroup, Protocol, ResolverConfig,
-    ResolverOpts,
-};
-use hickory_resolver::TokioAsyncResolver;
+use hickory_resolver::config::{LookupIpStrategy, NameServerConfig, ResolverConfig, ResolverOpts};
+use hickory_resolver::net::runtime::TokioRuntimeProvider;
+use hickory_resolver::TokioResolver;
 use tracing::{debug, warn};
 use veilink_config::DnsConfig;
 
@@ -57,7 +55,7 @@ struct CacheEntry {
 
 /// An IPv4-only resolver with a bounded TTL cache.
 pub struct Resolver {
-    inner: TokioAsyncResolver,
+    inner: TokioResolver,
     timeout: Duration,
     attempts: usize,
     cache_size: usize,
@@ -87,25 +85,42 @@ impl Resolver {
         opts.timeout = Duration::from_millis(config.timeout_ms.max(1));
         opts.attempts = config.attempts.max(1);
         opts.ip_strategy = LookupIpStrategy::Ipv4Only;
-        opts.validate = true;
+        // DNSSEC validation is deliberately off: this resolver answers "which address does this name
+        // have", and the connection is authenticated end to end by `VLP/1` regardless. Enabling it
+        // would require the `dnssec` feature and would add a failure mode that produces a bogus
+        // "cannot resolve" for a name that resolves fine without it.
+
+        // The builder reports a resolver-level error and the query path a protocol-level one, so
+        // the helper takes anything printable rather than naming a specific error type.
+        let fail = |name: &str, error: &dyn std::fmt::Display| ResolveError::Lookup {
+            name: name.to_string(),
+            attempts: 1,
+            reason: error.to_string(),
+        };
 
         let inner = if config.servers.is_empty() {
-            TokioAsyncResolver::tokio_from_system_conf().map_err(|e| ResolveError::Lookup {
-                name: "<system resolver>".to_string(),
-                attempts: 1,
-                reason: e.to_string(),
-            })?
+            let mut builder = TokioResolver::builder(TokioRuntimeProvider::default())
+                .map_err(|e| fail("<system resolver>", &e))?;
+            *builder.options_mut() = opts;
+            builder.build().map_err(|e| fail("<system resolver>", &e))?
         } else {
-            let mut group = NameServerConfigGroup::new();
+            let mut resolver_config = ResolverConfig::default();
             for server in &config.servers {
                 let (ip, port) = split_server(server)?;
-                group.push(NameServerConfig::new(
-                    std::net::SocketAddr::new(ip, port),
-                    Protocol::Udp,
-                ));
+                // The port is carried by each connection, not by the name server itself; the
+                // `udp_and_tcp` constructor sets both connections to the protocol default, so it
+                // has to be overwritten or a configured `127.0.0.1:5353` would silently become
+                // `127.0.0.1:53` and the queries would go somewhere the operator did not choose.
+                let mut name_server = NameServerConfig::udp_and_tcp(ip);
+                for connection in &mut name_server.connections {
+                    connection.port = port;
+                }
+                resolver_config.add_name_server(name_server);
             }
-            let resolver_config = ResolverConfig::from_parts(None, vec![], group);
-            TokioAsyncResolver::tokio(resolver_config, opts.clone())
+            TokioResolver::builder_with_config(resolver_config, TokioRuntimeProvider::default())
+                .with_options(opts)
+                .build()
+                .map_err(|e| fail("<configured resolver>", &e))?
         };
 
         Ok(Resolver {
@@ -170,22 +185,23 @@ impl Resolver {
                     last_error = e.to_string();
                 }
                 Ok(Ok(lookup)) => {
+                    // Addresses and TTLs are collected in one pass over the answer records, so a
+                    // record cannot contribute an address without also contributing its TTL.
                     let mut addresses: Vec<Ipv4Addr> = Vec::new();
-                    for record in lookup.iter() {
-                        let ip = record.0;
-                        if !addresses.contains(&ip) {
-                            addresses.push(ip);
-                        }
-                    }
-                    // Honour the smallest TTL in the answer; a shorter-lived record must not be
-                    // kept alive by a longer-lived companion.
                     let mut ttl: Option<Duration> = None;
-                    for record in lookup.as_lookup().records() {
-                        let candidate = Duration::from_secs(u64::from(record.ttl()));
+                    for record in lookup.answers() {
+                        let candidate = Duration::from_secs(u64::from(record.ttl));
+                        // Honour the smallest TTL in the answer; a shorter-lived record must not
+                        // be kept alive by a longer-lived companion.
                         ttl = Some(match ttl {
                             Some(current) => current.min(candidate),
                             None => candidate,
                         });
+                        if let hickory_resolver::proto::rr::RData::A(address) = &record.data {
+                            if !addresses.contains(&address.0) {
+                                addresses.push(address.0);
+                            }
+                        }
                     }
                     if addresses.is_empty() {
                         last_error = "response contained no A records".to_string();

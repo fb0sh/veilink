@@ -7,6 +7,8 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 veilink-config = { workspace = true }
@@ -19,7 +21,7 @@ veilink-privacy = { workspace = true }
 tokio = { workspace = true, features = ["rt", "net", "io-util", "time", "sync", "macros"] }
 tokio-util = { workspace = true, features = ["io"] }
 tokio-rustls = { workspace = true, features = ["ring", "tls12", "logging"] }
-hickory-resolver = { workspace = true, features = ["tokio-runtime", "system-config"] }
+hickory-resolver = { workspace = true, features = ["tokio", "system-config"] }
 ipnet = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }

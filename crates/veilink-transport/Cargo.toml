@@ -7,11 +7,11 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
-veilink-config = { workspace = true }
 veilink-crypto = { workspace = true }
-veilink-protocol = { workspace = true }
 
 tokio = { workspace = true, features = ["rt", "net", "io-util", "time", "sync", "macros"] }
 tokio-util = { workspace = true, features = ["io"] }
@@ -24,7 +24,6 @@ http = { workspace = true }
 bytes = { workspace = true }
 base64 = { workspace = true, features = ["alloc"] }
 sha2 = { workspace = true }
-futures-util = { workspace = true, features = ["std"] }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 zeroize = { workspace = true, features = ["alloc"] }

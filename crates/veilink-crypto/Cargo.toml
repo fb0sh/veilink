@@ -7,6 +7,8 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 aes-gcm = { workspace = true, features = ["aes", "alloc"] }
@@ -21,7 +23,6 @@ rand_core = { workspace = true, features = ["getrandom"] }
 getrandom = { workspace = true }
 base64 = { workspace = true, features = ["alloc"] }
 thiserror = { workspace = true }
-tracing = { workspace = true }
 
 [dev-dependencies]
 hex = "0.4"

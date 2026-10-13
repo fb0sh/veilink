@@ -7,13 +7,14 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 veilink-crypto = { workspace = true }
 subtle = { workspace = true }
 
 tokio = { workspace = true, features = ["rt", "io-util", "sync", "time", "macros"] }
-tokio-util = { workspace = true, features = ["io"] }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 zeroize = { workspace = true, features = ["alloc"] }

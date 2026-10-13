@@ -76,10 +76,20 @@ impl Stats {
     }
 
     /// Decrements `counter`, saturating at zero.
+    ///
+    /// Written as an explicit compare-exchange loop rather than `fetch_update` or `try_update`:
+    /// `fetch_update` is deprecated in newer toolchains (turning this crate's `-D warnings` build
+    /// into a failure) and `try_update` is too new for the declared minimum supported Rust version.
     pub fn dec(&self, counter: &AtomicU64) {
-        let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
-            Some(v.saturating_sub(1))
-        });
+        let mut current = counter.load(Ordering::Relaxed);
+        loop {
+            let next = current.saturating_sub(1);
+            match counter.compare_exchange_weak(current, next, Ordering::Relaxed, Ordering::Relaxed)
+            {
+                Ok(_) => return,
+                Err(observed) => current = observed,
+            }
+        }
     }
 
     /// Reads `counter`.
