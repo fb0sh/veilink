@@ -121,8 +121,12 @@ jobs:
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
-          # Extract the section for this tag; fall back to the whole file, then to a stub.
-          awk -v tag="$tag" '
+          # CHANGELOG headings are unversioned (`## [0.1.0]`) while tags are versioned
+          # (`v0.1.0`), so the leading `v` has to come off or nothing matches and every release
+          # silently falls back to the stub below.
+          version="${tag#v}"
+          # Extract the section for this release; fall back to a stub if it is missing.
+          awk -v tag="$version" '
             /^## \[/ { if (found) exit; if (index($0, tag)) found = 1 }
             found { print }
           ' CHANGELOG.md > NOTES.md || true
